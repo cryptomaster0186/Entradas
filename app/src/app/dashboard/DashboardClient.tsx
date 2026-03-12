@@ -10,6 +10,7 @@ import { PlatformChart } from "@/components/dashboard/PlatformChart";
 import { StatusPie } from "@/components/dashboard/StatusPie";
 import { EventTable } from "@/components/dashboard/EventTable";
 import { AccountTable } from "@/components/dashboard/AccountTable";
+import { UsersPanel } from "@/components/dashboard/UsersPanel";
 
 interface Batch {
   id: string;
@@ -36,24 +37,41 @@ interface Props {
   initialBatches: Batch[];
   initialSyncLogs: SyncLog[];
   userEmail: string;
+  userId: string;
+  userRole: "ADMIN" | "VIEWER";
 }
 
 function usd(n: number) {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-type Tab = "dashboard" | "sync" | "import";
+type Tab = "dashboard" | "sync" | "import" | "users";
 
 const TAB_LABELS: Record<Tab, string> = {
   dashboard: "Dashboard",
   sync: "Sync",
   import: "Manual Import",
+  users: "Users",
 };
 
-export function DashboardClient({ initialData, initialBatches, initialSyncLogs, userEmail }: Props) {
+export function DashboardClient({
+  initialData,
+  initialBatches,
+  initialSyncLogs,
+  userEmail,
+  userId,
+  userRole,
+}: Props) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [refreshing, setRefreshing] = useState(false);
+
+  const isAdmin = userRole === "ADMIN";
+
+  // Tabs visible to this user
+  const visibleTabs: Tab[] = isAdmin
+    ? ["dashboard", "sync", "import", "users"]
+    : ["dashboard"];
 
   const refreshData = useCallback(async () => {
     setRefreshing(true);
@@ -84,7 +102,7 @@ export function DashboardClient({ initialData, initialBatches, initialSyncLogs, 
 
           {/* Tabs */}
           <nav className="flex gap-1">
-            {(["dashboard", "sync", "import"] as Tab[]).map((tab) => (
+            {visibleTabs.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -101,6 +119,11 @@ export function DashboardClient({ initialData, initialBatches, initialSyncLogs, 
 
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500 hidden md:block">{userEmail}</span>
+            {!isAdmin && (
+              <span className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full hidden sm:block">
+                viewer
+              </span>
+            )}
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="text-xs text-gray-500 hover:text-white transition-colors"
@@ -115,12 +138,12 @@ export function DashboardClient({ initialData, initialBatches, initialSyncLogs, 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
         {/* ── Sync tab ── */}
-        {activeTab === "sync" && (
+        {activeTab === "sync" && isAdmin && (
           <SyncPanel logs={initialSyncLogs} onSyncSuccess={refreshData} />
         )}
 
         {/* ── Manual import tab ── */}
-        {activeTab === "import" && (
+        {activeTab === "import" && isAdmin && (
           <div className="space-y-4">
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-5 py-3 text-sm text-yellow-300">
               <span className="font-semibold">Note:</span> The primary data source is now Google Sheets.
@@ -128,6 +151,11 @@ export function DashboardClient({ initialData, initialBatches, initialSyncLogs, 
             </div>
             <ImportPanel batches={initialBatches} onImportSuccess={refreshData} />
           </div>
+        )}
+
+        {/* ── Users tab (admin only) ── */}
+        {activeTab === "users" && isAdmin && (
+          <UsersPanel currentUserId={userId} />
         )}
 
         {/* ── Dashboard tab ── */}
@@ -144,7 +172,7 @@ export function DashboardClient({ initialData, initialBatches, initialSyncLogs, 
                     {new Date(lastSync.startedAt).toLocaleString()}
                   </p>
                 )}
-                {!lastSync && (
+                {!lastSync && isAdmin && (
                   <p className="text-xs text-yellow-500 mt-0.5">
                     No sync yet — go to the Sync tab to pull data from Google Sheets.
                   </p>
@@ -257,12 +285,14 @@ export function DashboardClient({ initialData, initialBatches, initialSyncLogs, 
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <p className="text-sm">No data yet.</p>
-                <button
-                  onClick={() => setActiveTab("sync")}
-                  className="mt-3 text-indigo-400 hover:text-indigo-300 text-sm underline underline-offset-2"
-                >
-                  Go to Sync to pull from Google Sheets →
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => setActiveTab("sync")}
+                    className="mt-3 text-indigo-400 hover:text-indigo-300 text-sm underline underline-offset-2"
+                  >
+                    Go to Sync to pull from Google Sheets →
+                  </button>
+                )}
               </div>
             )}
           </>

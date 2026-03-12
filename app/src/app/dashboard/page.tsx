@@ -40,6 +40,8 @@ export default async function DashboardPage() {
         error: s.error ?? null,
       }))}
       userEmail={session.user?.email ?? ""}
+      userId={session.user?.id ?? ""}
+      userRole={session.user?.role ?? "VIEWER"}
     />
   );
 }

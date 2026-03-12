@@ -15,10 +15,11 @@ export async function GET() {
   return NextResponse.json(logs);
 }
 
-/** POST /api/sync — trigger a manual sync */
+/** POST /api/sync — trigger a manual sync (admin only) */
 export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user?.role !== "ADMIN") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const result = await runSync("manual");
