@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  ADMIN
+}
+
+// Represents a row from the "Ticket Data" sheet
+model TicketData {
+  id          String    @id @default(cuid())
+  importBatch String
+
+  event       String
+  eventDate   DateTime?
+  venue       String?
+  section     String?
+  row         String?
+  seats       String?
+  quantity    Int       @default(1)
+
+  // Financial columns
+  totalCost   Float     @default(0) // "Total Cost" — purchase spend
+  income      Float     @default(0) // "Income"     — sale revenue
+  profit      Float     @default(0) // "Profit"     — income minus cost
+
+  // Platform / account info
+  platform    String?   // e.g. StubHub, Ticketmaster, Vivid Seats
+  account     String?
+  status      String?   // Sold | Listed | Pending | Cancelled
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([importBatch])
+  @@index([platform])
+  @@index([status])
+  @@index([event])
+}
+
+// Represents a row from the "Expenses" sheet
+model Expense {
+  id          String    @id @default(cuid())
+  importBatch String
+
+  date        DateTime?
+  description String?
+  category    String?
+  amount      Float     @default(0) // "Amount"
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([importBatch])
+}
+
+// Tracks every Excel upload
+model ImportBatch {
+  id           String       @id @default(cuid())
+  filename     String
+  uploadedAt   DateTime     @default(now())
+  rowsTickets  Int          @default(0)
+  rowsExpenses Int          @default(0)
+  status       ImportStatus @default(COMPLETED)
+}
+
+enum ImportStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
