@@ -20,10 +20,17 @@ enum Role {
   ADMIN
 }
 
+// Source tag on each row: "google-sheets" or "manual"
+enum DataSource {
+  GOOGLE_SHEETS
+  MANUAL
+}
+
 // Represents a row from the "Ticket Data" sheet
 model TicketData {
-  id          String    @id @default(cuid())
+  id          String     @id @default(cuid())
   importBatch String
+  source      DataSource @default(GOOGLE_SHEETS)
 
   event       String
   eventDate   DateTime?
@@ -31,22 +38,23 @@ model TicketData {
   section     String?
   row         String?
   seats       String?
-  quantity    Int       @default(1)
+  quantity    Int        @default(1)
 
   // Financial columns
-  totalCost   Float     @default(0) // "Total Cost" — purchase spend
-  income      Float     @default(0) // "Income"     — sale revenue
-  profit      Float     @default(0) // "Profit"     — income minus cost
+  totalCost   Float      @default(0) // "Total Cost" — purchase spend
+  income      Float      @default(0) // "Income"     — sale revenue
+  profit      Float      @default(0) // "Profit"     — income minus cost
 
   // Platform / account info
-  platform    String?   // e.g. StubHub, Ticketmaster, Vivid Seats
+  platform    String?
   account     String?
-  status      String?   // Sold | Listed | Pending | Cancelled
+  status      String?    // Sold | Listed | Pending | Cancelled
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@index([importBatch])
+  @@index([source])
   @@index([platform])
   @@index([status])
   @@index([event])
@@ -54,21 +62,23 @@ model TicketData {
 
 // Represents a row from the "Expenses" sheet
 model Expense {
-  id          String    @id @default(cuid())
+  id          String     @id @default(cuid())
   importBatch String
+  source      DataSource @default(GOOGLE_SHEETS)
 
   date        DateTime?
   description String?
   category    String?
-  amount      Float     @default(0) // "Amount"
+  amount      Float      @default(0) // "Amount"
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   @@index([importBatch])
+  @@index([source])
 }
 
-// Tracks every Excel upload
+// Tracks every manual Excel upload
 model ImportBatch {
   id           String       @id @default(cuid())
   filename     String
@@ -80,6 +90,24 @@ model ImportBatch {
 
 enum ImportStatus {
   PENDING
+  COMPLETED
+  FAILED
+}
+
+// Tracks every Google Sheets sync
+model SyncLog {
+  id           String     @id @default(cuid())
+  startedAt    DateTime   @default(now())
+  completedAt  DateTime?
+  status       SyncStatus @default(RUNNING)
+  rowsTickets  Int        @default(0)
+  rowsExpenses Int        @default(0)
+  triggeredBy  String     @default("manual") // "manual" | "cron"
+  error        String?
+}
+
+enum SyncStatus {
+  RUNNING
   COMPLETED
   FAILED
 }

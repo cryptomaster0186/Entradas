@@ -5,6 +5,7 @@ import { signOut } from "next-auth/react";
 import type { DashboardData } from "@/lib/dashboard";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ImportPanel } from "@/components/dashboard/ImportPanel";
+import { SyncPanel } from "@/components/dashboard/SyncPanel";
 import { PlatformChart } from "@/components/dashboard/PlatformChart";
 import { StatusPie } from "@/components/dashboard/StatusPie";
 import { EventTable } from "@/components/dashboard/EventTable";
@@ -19,9 +20,21 @@ interface Batch {
   status: string;
 }
 
+interface SyncLog {
+  id: string;
+  startedAt: string;
+  completedAt: string | null;
+  status: string;
+  rowsTickets: number;
+  rowsExpenses: number;
+  triggeredBy: string;
+  error: string | null;
+}
+
 interface Props {
   initialData: DashboardData;
   initialBatches: Batch[];
+  initialSyncLogs: SyncLog[];
   userEmail: string;
 }
 
@@ -29,9 +42,15 @@ function usd(n: number) {
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-type Tab = "dashboard" | "import";
+type Tab = "dashboard" | "sync" | "import";
 
-export function DashboardClient({ initialData, initialBatches, userEmail }: Props) {
+const TAB_LABELS: Record<Tab, string> = {
+  dashboard: "Dashboard",
+  sync: "Sync",
+  import: "Manual Import",
+};
+
+export function DashboardClient({ initialData, initialBatches, initialSyncLogs, userEmail }: Props) {
   const [data, setData] = useState<DashboardData>(initialData);
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [refreshing, setRefreshing] = useState(false);
@@ -40,16 +59,14 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
     setRefreshing(true);
     try {
       const res = await fetch("/api/dashboard");
-      if (res.ok) {
-        const fresh = await res.json();
-        setData(fresh);
-      }
+      if (res.ok) setData(await res.json());
     } finally {
       setRefreshing(false);
     }
   }, []);
 
   const { kpis } = data;
+  const lastSync = initialSyncLogs[0] ?? null;
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
@@ -63,22 +80,21 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
               </svg>
             </div>
             <span className="font-bold text-white text-sm">Entradas</span>
-            <span className="text-gray-600 text-xs hidden sm:block">Admin</span>
           </div>
 
           {/* Tabs */}
           <nav className="flex gap-1">
-            {(["dashboard", "import"] as Tab[]).map((tab) => (
+            {(["dashboard", "sync", "import"] as Tab[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium capitalize transition-colors ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === tab
                     ? "bg-indigo-600 text-white"
                     : "text-gray-400 hover:text-white hover:bg-gray-800"
                 }`}
               >
-                {tab}
+                {TAB_LABELS[tab]}
               </button>
             ))}
           </nav>
@@ -98,20 +114,39 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
       {/* Main */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-        {activeTab === "import" && (
-          <ImportPanel batches={initialBatches} onImportSuccess={refreshData} />
+        {/* ── Sync tab ── */}
+        {activeTab === "sync" && (
+          <SyncPanel logs={initialSyncLogs} onSyncSuccess={refreshData} />
         )}
 
+        {/* ── Manual import tab ── */}
+        {activeTab === "import" && (
+          <div className="space-y-4">
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-5 py-3 text-sm text-yellow-300">
+              <span className="font-semibold">Note:</span> The primary data source is now Google Sheets.
+              Manual uploads are kept for one-off corrections and are stored separately from synced data.
+            </div>
+            <ImportPanel batches={initialBatches} onImportSuccess={refreshData} />
+          </div>
+        )}
+
+        {/* ── Dashboard tab ── */}
         {activeTab === "dashboard" && (
           <>
-            {/* Last import info + refresh */}
+            {/* Header row */}
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-xl font-bold text-white">Financial Summary</h1>
-                {data.lastImport && (
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Last import: {data.lastImport.filename} &middot;{" "}
-                    {new Date(data.lastImport.uploadedAt).toLocaleString()}
+                {lastSync?.status === "COMPLETED" && (
+                  <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                    Synced from Google Sheets &middot;{" "}
+                    {new Date(lastSync.startedAt).toLocaleString()}
+                  </p>
+                )}
+                {!lastSync && (
+                  <p className="text-xs text-yellow-500 mt-0.5">
+                    No sync yet — go to the Sync tab to pull data from Google Sheets.
                   </p>
                 )}
               </div>
@@ -122,10 +157,7 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
               >
                 <svg
                   className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
@@ -136,12 +168,12 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
             {/* KPI Grid */}
             <section>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <KPICard title="Total Spend" value={usd(kpis.totalSpend)} subtitle="Purchase costs" color="orange" />
-                <KPICard title="Revenue" value={usd(kpis.revenue)} subtitle="Ticket income" color="blue" />
-                <KPICard title="Profit on Sales" value={usd(kpis.profitOnSales)} subtitle="Revenue − spend" color={kpis.profitOnSales >= 0 ? "green" : "red"} />
-                <KPICard title="Extra Expenses" value={usd(kpis.extraExpenses)} subtitle="Non-ticket costs" color="purple" />
-                <KPICard title="Total Expenses" value={usd(kpis.totalExpenses)} subtitle="Spend + extras" color="default" />
-                <KPICard title="Net Income" value={usd(kpis.netIncome)} subtitle="Revenue − all exp." color={kpis.netIncome >= 0 ? "green" : "red"} />
+                <KPICard title="Total Spend"     value={usd(kpis.totalSpend)}     subtitle="Purchase costs"      color="orange" />
+                <KPICard title="Revenue"          value={usd(kpis.revenue)}         subtitle="Ticket income"       color="blue" />
+                <KPICard title="Profit on Sales"  value={usd(kpis.profitOnSales)}   subtitle="Revenue − spend"     color={kpis.profitOnSales >= 0 ? "green" : "red"} />
+                <KPICard title="Extra Expenses"   value={usd(kpis.extraExpenses)}   subtitle="Non-ticket costs"    color="purple" />
+                <KPICard title="Total Expenses"   value={usd(kpis.totalExpenses)}   subtitle="Spend + extras"      color="default" />
+                <KPICard title="Net Income"       value={usd(kpis.netIncome)}       subtitle="Revenue − all exp."  color={kpis.netIncome >= 0 ? "green" : "red"} />
               </div>
             </section>
 
@@ -150,8 +182,6 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <h2 className="text-sm font-semibold text-white mb-4">Revenue by Platform</h2>
                 <PlatformChart data={data.platformBreakdown} />
-
-                {/* Platform table underneath */}
                 {data.platformBreakdown.length > 0 && (
                   <table className="w-full text-xs mt-4">
                     <thead>
@@ -181,7 +211,6 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <h2 className="text-sm font-semibold text-white mb-4">Sales Status Breakdown</h2>
                 <StatusPie data={data.statusSummary} />
-
                 {data.statusSummary.length > 0 && (
                   <table className="w-full text-xs mt-4">
                     <thead>
@@ -227,7 +256,13 @@ export function DashboardClient({ initialData, initialBatches, userEmail }: Prop
                 <svg className="mx-auto w-12 h-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-sm">No data yet. Go to the Import tab to upload your Excel workbook.</p>
+                <p className="text-sm">No data yet.</p>
+                <button
+                  onClick={() => setActiveTab("sync")}
+                  className="mt-3 text-indigo-400 hover:text-indigo-300 text-sm underline underline-offset-2"
+                >
+                  Go to Sync to pull from Google Sheets →
+                </button>
               </div>
             )}
           </>
