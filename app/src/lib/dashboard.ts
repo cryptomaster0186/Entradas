@@ -3,7 +3,7 @@
  * All numbers are derived from the raw TicketData and Expense tables —
  * never from a "Financial Summary" sheet.
  */
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 export interface KPISummary {
   totalSpend: number;       // sum of totalCost  (Ticket Data)

@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getDashboardData } from "@/lib/dashboard";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { DashboardClient } from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
