@@ -18,6 +18,8 @@ import type { RawTicketRow, RawExpenseRow } from "@/lib/excel";
 export const SHEET_ID =
   process.env.GOOGLE_SHEET_ID ?? "1UxP652ru_KktFQQ08RKcEQOcIj-ybJZA";
 
+export const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2 ?? "";
+
 const TICKET_TAB = "Ticket Data";
 const EXPENSE_TAB = "Expenses";
 
@@ -136,31 +138,47 @@ export interface SheetsData {
   expenses: RawExpenseRow[];
 }
 
+async function fetchFromSheet(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string
+): Promise<SheetsData> {
+  const safeGet = async (range: string) => {
+    try {
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${range}'`,
+        valueRenderOption: "FORMATTED_VALUE",
+        dateTimeRenderOption: "FORMATTED_STRING",
+      });
+      return (res.data.values ?? []) as string[][];
+    } catch {
+      return [] as string[][];
+    }
+  };
+
+  const [ticketValues, expenseValues] = await Promise.all([
+    safeGet(TICKET_TAB),
+    safeGet(EXPENSE_TAB),
+  ]);
+
+  return {
+    tickets: parseTicketRows(valuesToRows(ticketValues)),
+    expenses: parseExpenseRows(valuesToRows(expenseValues)),
+  };
+}
+
 export async function fetchSheetData(): Promise<SheetsData> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Fetch both tabs in parallel
-  const [ticketRes, expenseRes] = await Promise.all([
-    sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: `'${TICKET_TAB}'`,
-      valueRenderOption: "FORMATTED_VALUE",
-      dateTimeRenderOption: "FORMATTED_STRING",
-    }),
-    sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: `'${EXPENSE_TAB}'`,
-      valueRenderOption: "FORMATTED_VALUE",
-      dateTimeRenderOption: "FORMATTED_STRING",
-    }),
-  ]);
+  const sheetIds = [SHEET_ID, SHEET_ID_2].filter(Boolean);
 
-  const ticketValues = (ticketRes.data.values ?? []) as string[][];
-  const expenseValues = (expenseRes.data.values ?? []) as string[][];
+  const results = await Promise.all(
+    sheetIds.map((id) => fetchFromSheet(sheets, id))
+  );
 
-  const tickets = parseTicketRows(valuesToRows(ticketValues));
-  const expenses = parseExpenseRows(valuesToRows(expenseValues));
-
-  return { tickets, expenses };
+  return {
+    tickets: results.flatMap((r) => r.tickets),
+    expenses: results.flatMap((r) => r.expenses),
+  };
 }
