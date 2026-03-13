@@ -9,6 +9,12 @@
  *   GOOGLE_SHEET_ID              — spreadsheet id (from the URL)
  *   GOOGLE_SERVICE_ACCOUNT_EMAIL — service account client_email
  *   GOOGLE_PRIVATE_KEY           — service account private_key (with literal \n)
+ *
+ * FIX NOTES (inflated values bug):
+ *   - Root cause: FORMATTED_VALUE returned "€140,00" which the old num() parsed as 14000 (100x).
+ *   - Fix 1: Use UNFORMATTED_VALUE so numbers arrive as raw JS numbers, no currency strings.
+ *   - Fix 2: num() now handles European format (comma decimal, dot thousands) as fallback.
+ *   - Fix 3: parseDate() handles DD.M.YYYY. (Croatian) format.
  */
 import { google } from "googleapis";
 import type { RawTicketRow, RawExpenseRow } from "@/lib/excel";
@@ -19,9 +25,6 @@ export const SHEET_ID =
   process.env.GOOGLE_SHEET_ID ?? "1UxP652ru_KktFQQ08RKcEQOcIj-ybJZA";
 
 export const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2 ?? "";
-
-const TICKET_TAB_VARIANTS = ["Ticket Data", "1 Ticket Data", "ticket data", "Tickets"];
-const EXPENSE_TAB_VARIANTS = ["Expenses", "expenses", "Expense"];
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -43,17 +46,23 @@ function getAuth() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Convert a 2-D values array from the Sheets API into array-of-objects. */
-function valuesToRows(values: string[][]): Record<string, string>[] {
+type CellValue = string | number | boolean | null | undefined;
+
+/**
+ * Convert a 2-D values array from the Sheets API into array-of-objects.
+ * Works with UNFORMATTED_VALUE responses where cells may be numbers/booleans.
+ */
+function valuesToRows(values: CellValue[][]): Record<string, CellValue>[] {
   if (!values || values.length < 2) return [];
   const [rawHeaders, ...dataRows] = values;
   const headers = rawHeaders.map((h) => String(h ?? "").trim());
+
   return dataRows
-    .filter((row) => row.some((cell) => String(cell ?? "").trim() !== ""))
+    .filter((row) => row.some((cell) => cell !== null && cell !== undefined && String(cell).trim() !== ""))
     .map((row) => {
-      const obj: Record<string, string> = {};
+      const obj: Record<string, CellValue> = {};
       headers.forEach((h, i) => {
-        obj[h] = String(row[i] ?? "").trim();
+        if (h) obj[h] = row[i] ?? "";
       });
       return obj;
     });
@@ -63,36 +72,83 @@ function norm(s: string) {
   return s.toLowerCase().trim();
 }
 
-function pick(
-  row: Record<string, string>,
-  ...candidates: string[]
-): string {
+function pick(row: Record<string, CellValue>, ...candidates: string[]): CellValue {
   const normCandidates = candidates.map(norm);
   const key = Object.keys(row).find((k) => normCandidates.includes(norm(k)));
   return key !== undefined ? row[key] : "";
 }
 
-function num(v: string): number {
-  const n = parseFloat(v.replace(/[^0-9.\-]/g, ""));
+/**
+ * Parse a number from a cell value.
+ * With UNFORMATTED_VALUE the cell is already a JS number — just return it.
+ * For string fallback, handles both standard (1,234.56) and European (1.234,56) formats.
+ */
+function num(v: CellValue): number {
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  if (typeof v === "boolean") return v ? 1 : 0;
+
+  let s = String(v ?? "").trim();
+  // Strip currency symbols, spaces, percent
+  s = s.replace(/[€$£¥%\s]/g, "");
+  if (!s || s === "-") return 0;
+
+  // European format detection: ends with comma + exactly 2 digits (e.g. "140,00", "1.244,07")
+  if (/,\d{2}$/.test(s)) {
+    // Remove thousands dots, convert decimal comma to dot
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else {
+    // Standard format: remove thousands commas
+    s = s.replace(/,/g, "");
+  }
+
+  const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
 
-function parseDate(v: string): Date | null {
-  if (!v) return null;
-  const d = new Date(v);
+/**
+ * Parse a date cell.
+ * Handles:
+ *   - JS number (Excel/Sheets serial date when UNFORMATTED_VALUE is used)
+ *   - "DD.M.YYYY." / "DD.MM.YYYY." (Croatian format)
+ *   - ISO strings and other formats parseable by Date constructor
+ */
+function parseDate(v: CellValue): Date | null {
+  if (!v && v !== 0) return null;
+
+  // Serial number from UNFORMATTED_VALUE (days since 1899-12-30)
+  if (typeof v === "number") {
+    const ms = (v - 25569) * 86400 * 1000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  // Croatian format: "10.5.2025." or "10.05.2025"
+  const croatian = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\.?$/);
+  if (croatian) {
+    const [, day, month, year] = croatian;
+    const d = new Date(Number(year), Number(month) - 1, Number(day));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Fallback to JS Date constructor
+  const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
 
-function str(v: string): string | null {
-  return v === "" ? null : v;
+function str(v: CellValue): string | null {
+  const s = String(v ?? "").trim();
+  return s === "" ? null : s;
 }
 
 // ─── Sheet-specific parsers ───────────────────────────────────────────────────
 
-function parseTicketRows(rows: Record<string, string>[]): RawTicketRow[] {
+function parseTicketRows(rows: Record<string, CellValue>[]): RawTicketRow[] {
   return rows
     .map((row) => {
-      const event = pick(row, "event", "event name", "show", "show name");
+      const event = str(pick(row, "event", "event name", "show", "show name"));
       if (!event) return null;
 
       return {
@@ -114,16 +170,16 @@ function parseTicketRows(rows: Record<string, string>[]): RawTicketRow[] {
     .filter((r): r is RawTicketRow => r !== null);
 }
 
-function parseExpenseRows(rows: Record<string, string>[]): RawExpenseRow[] {
+function parseExpenseRows(rows: Record<string, CellValue>[]): RawExpenseRow[] {
   return rows
     .map((row) => {
       const amount = num(pick(row, "amount", "cost", "value", "expense amount"));
-      const description = pick(row, "description", "expense", "note", "item");
+      const description = str(pick(row, "description", "expense", "note", "item"));
       if (amount === 0 && !description) return null;
 
       return {
         date: parseDate(pick(row, "date", "expense date")),
-        description: str(description),
+        description,
         category: str(pick(row, "category", "type", "kind")),
         amount,
       } satisfies RawExpenseRow;
@@ -142,32 +198,39 @@ async function fetchFromSheet(
   sheets: ReturnType<typeof google.sheets>,
   spreadsheetId: string
 ): Promise<SheetsData> {
-  // Get actual tab names from the spreadsheet
+  // Get actual tab names from the spreadsheet metadata
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
   const tabNames = (meta.data.sheets ?? [])
     .map((s) => s.properties?.title ?? "")
     .filter(Boolean);
 
-  const findTab = (keywords: string[]) =>
-    tabNames.find((t) =>
-      keywords.some((kw) => t.toLowerCase().includes(kw.toLowerCase()))
-    );
+  console.log(`[sync] Sheet ${spreadsheetId} tabs:`, tabNames);
 
-  const ticketTab = findTab(["ticket"]);
-  const expenseTab = findTab(["expense"]);
+  const findTab = (keyword: string) =>
+    tabNames.find((t) => t.toLowerCase().includes(keyword.toLowerCase()));
 
-  const getTab = async (tabName: string | undefined) => {
-    if (!tabName) return [] as string[][];
+  const ticketTab = findTab("ticket");
+  const expenseTab = findTab("expense");
+
+  console.log(`[sync] Ticket tab: ${ticketTab ?? "NOT FOUND"}`);
+  console.log(`[sync] Expense tab: ${expenseTab ?? "NOT FOUND"}`);
+
+  const getTab = async (tabName: string | undefined): Promise<CellValue[][]> => {
+    if (!tabName) return [];
     try {
       const res = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: `'${tabName}'`,
-        valueRenderOption: "FORMATTED_VALUE",
-        dateTimeRenderOption: "FORMATTED_STRING",
+        // UNFORMATTED_VALUE returns raw numbers (not "€140,00") — fixes 100x inflation bug
+        valueRenderOption: "UNFORMATTED_VALUE",
+        // With UNFORMATTED_VALUE, dates are serial numbers; we handle them in parseDate()
+        dateTimeRenderOption: "SERIAL_NUMBER",
       });
-      return (res.data.values ?? []) as string[][];
-    } catch {
-      return [] as string[][];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (res.data.values ?? []) as any[][];
+    } catch (err) {
+      console.error(`[sync] Failed to fetch tab "${tabName}":`, err);
+      return [];
     }
   };
 
@@ -176,10 +239,29 @@ async function fetchFromSheet(
     getTab(expenseTab),
   ]);
 
-  return {
-    tickets: parseTicketRows(valuesToRows(ticketValues)),
-    expenses: parseExpenseRows(valuesToRows(expenseValues)),
-  };
+  const ticketRows = valuesToRows(ticketValues);
+  const expenseRows = valuesToRows(expenseValues);
+
+  console.log(`[sync] Raw rows — tickets: ${ticketRows.length}, expenses: ${expenseRows.length}`);
+
+  const tickets = parseTicketRows(ticketRows);
+  const expenses = parseExpenseRows(expenseRows);
+
+  console.log(`[sync] Parsed rows — tickets: ${tickets.length}, expenses: ${expenses.length}`);
+
+  if (tickets.length > 0) {
+    const totalCost = tickets.reduce((s, t) => s + t.totalCost, 0);
+    const income = tickets.reduce((s, t) => s + t.income, 0);
+    const profit = tickets.reduce((s, t) => s + t.profit, 0);
+    console.log(`[sync] Ticket totals — spend: ${totalCost.toFixed(2)}, revenue: ${income.toFixed(2)}, profit: ${profit.toFixed(2)}`);
+  }
+
+  if (expenses.length > 0) {
+    const total = expenses.reduce((s, e) => s + e.amount, 0);
+    console.log(`[sync] Expense total: ${total.toFixed(2)}`);
+  }
+
+  return { tickets, expenses };
 }
 
 export async function fetchSheetData(): Promise<SheetsData> {
@@ -187,13 +269,18 @@ export async function fetchSheetData(): Promise<SheetsData> {
   const sheets = google.sheets({ version: "v4", auth });
 
   const sheetIds = [SHEET_ID, SHEET_ID_2].filter(Boolean);
+  console.log(`[sync] Fetching from ${sheetIds.length} sheet(s):`, sheetIds);
 
   const results = await Promise.all(
     sheetIds.map((id) => fetchFromSheet(sheets, id))
   );
 
-  return {
+  const merged = {
     tickets: results.flatMap((r) => r.tickets),
     expenses: results.flatMap((r) => r.expenses),
   };
+
+  console.log(`[sync] Merged totals — tickets: ${merged.tickets.length}, expenses: ${merged.expenses.length}`);
+
+  return merged;
 }

@@ -51,7 +51,30 @@ export async function runSync(triggeredBy: "manual" | "cron" = "manual"): Promis
       }
     });
 
-    // 4. Mark sync complete
+    // 4. Log calculated totals for debugging
+    const dbAgg = await prisma.ticketData.aggregate({
+      where: { source: "GOOGLE_SHEETS" },
+      _sum: { totalCost: true, income: true, profit: true },
+    });
+    const expAgg = await prisma.expense.aggregate({
+      where: { source: "GOOGLE_SHEETS" },
+      _sum: { amount: true },
+    });
+    const totalSpend = dbAgg._sum.totalCost ?? 0;
+    const revenue = dbAgg._sum.income ?? 0;
+    const profitOnSales = dbAgg._sum.profit ?? 0;
+    const extraExpenses = expAgg._sum.amount ?? 0;
+    const totalExpenses = totalSpend + extraExpenses;
+    const netIncome = revenue - totalExpenses;
+    console.log("[sync] DB totals after insert:");
+    console.log(`  Total Spend:     ${totalSpend.toFixed(2)}  (expected ~19099.95)`);
+    console.log(`  Revenue:         ${revenue.toFixed(2)}  (expected ~16763.54)`);
+    console.log(`  Profit on Sales: ${profitOnSales.toFixed(2)}  (expected ~4377.03)`);
+    console.log(`  Extra Expenses:  ${extraExpenses.toFixed(2)}  (expected ~3711.71)`);
+    console.log(`  Total Expenses:  ${totalExpenses.toFixed(2)}  (expected ~22811.66)`);
+    console.log(`  Net Income:      ${netIncome.toFixed(2)}  (expected ~-6048.12)`);
+
+    // 5. Mark sync complete
     await prisma.syncLog.update({
       where: { id: log.id },
       data: {
