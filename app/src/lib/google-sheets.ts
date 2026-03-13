@@ -353,12 +353,14 @@ export async function fetchSheetData(): Promise<SheetsData> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
 
-  const sheetIds = [SHEET_ID, SHEET_ID_2, SHEET_ID_3].filter(Boolean);
-  console.log(`[sync] Fetching from ${sheetIds.length} sheet(s):`, sheetIds);
+  // SHEET_ID_3 is ONLY used for the payout table (Financial Summary sheet)
+  // Do NOT include it in ticket/expense fetching to avoid duplicating data
+  const ticketExpenseSheetIds = [SHEET_ID, SHEET_ID_2].filter(Boolean);
+  console.log(`[sync] Fetching ticket/expense data from ${ticketExpenseSheetIds.length} sheet(s):`, ticketExpenseSheetIds);
+  console.log(`[sync] Fetching payout table from SHEET_ID_3:`, SHEET_ID_3 || "NOT SET");
 
-  // Fetch ticket/expense data from all sheets + payout table from SHEET_ID_3
   const [results, payoutEntries] = await Promise.all([
-    Promise.all(sheetIds.map((id) => fetchFromSheet(sheets, id))),
+    Promise.all(ticketExpenseSheetIds.map((id) => fetchFromSheet(sheets, id))),
     SHEET_ID_3 ? fetchPayoutTable(sheets, SHEET_ID_3) : Promise.resolve([]),
   ]);
 
