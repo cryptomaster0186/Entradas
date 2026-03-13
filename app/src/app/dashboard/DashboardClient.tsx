@@ -248,8 +248,8 @@ export function DashboardClient({
 
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <h2 className="text-sm font-semibold text-white mb-4">Sales Status Breakdown</h2>
-                <StatusPie data={data.statusSummary} />
-                {data.statusSummary.length > 0 && (
+                <StatusPie data={data.statusSummary.filter((s) => s.status !== "Unknown")} />
+                {data.statusSummary.filter((s) => s.status !== "Unknown").length > 0 ? (
                   <table className="w-full text-xs mt-4">
                     <thead>
                       <tr className="border-b border-gray-800">
@@ -259,7 +259,7 @@ export function DashboardClient({
                       </tr>
                     </thead>
                     <tbody>
-                      {data.statusSummary.map((s, i) => (
+                      {data.statusSummary.filter((s) => s.status !== "Unknown").map((s, i) => (
                         <tr key={i} className="border-b border-gray-800/40 last:border-0">
                           <td className="py-2 text-gray-300 capitalize">{s.status}</td>
                           <td className="py-2 text-right text-gray-400">{s.count}</td>
@@ -268,6 +268,10 @@ export function DashboardClient({
                       ))}
                     </tbody>
                   </table>
+                ) : (
+                  <p className="text-sm text-gray-600 mt-4">
+                    No status data available — add a &quot;Status&quot; column in the Ticket Data sheet to see breakdown.
+                  </p>
                 )}
               </div>
             </section>

@@ -236,8 +236,25 @@ export async function fetchFinancialSummaryKPIs(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const values = (res.data.values ?? []) as any[][];
 
-    // Build a map of label (normalised) → number value found to its right
+    // Log first few rows for debugging structure
+    console.log(`[sync] Financial Summary tab "${summaryTab}" has ${values.length} rows`);
+    for (let r = 0; r < Math.min(values.length, 5); r++) {
+      console.log(`[sync]   Row ${r}:`, values[r]?.slice(0, 8));
+    }
+
+    // Build a map of label (normalised) → number value found adjacent
     const found: Record<string, number> = {};
+
+    // Helper to extract a number from a cell value (accepts 0)
+    const cellNum = (v: unknown): number | null => {
+      if (typeof v === "number" && !isNaN(v)) return v;
+      if (typeof v === "string" && v.trim()) {
+        const n = num(v);
+        // Accept 0 only if the string looks like a number
+        if (n !== 0 || /^[\d€$£¥\s.,%-]+$/.test(v.trim())) return n;
+      }
+      return null;
+    };
 
     for (let r = 0; r < values.length; r++) {
       const row = values[r] ?? [];
@@ -245,53 +262,62 @@ export async function fetchFinancialSummaryKPIs(
         const cell = String(row[c] ?? "").toLowerCase().trim();
         if (!cell) continue;
 
-        // Check against known labels (match if cell contains the keyword)
+        // Check against known labels
         const matchLabel = (kw: string) => cell === kw || cell.includes(kw);
 
-        // Look right for the numeric value (skip empty cells, try up to 3 cols)
-        const getRight = () => {
+        // Look right for the numeric value (try up to 3 cols right)
+        // Then look below (same col, up to 2 rows)
+        const findValue = (): number | null => {
+          // Right
           for (let dc = 1; dc <= 3; dc++) {
-            const v = row[c + dc];
-            if (typeof v === "number" && !isNaN(v)) return v;
-            if (typeof v === "string" && v.trim() && num(v) !== 0) return num(v);
+            const v = cellNum(row[c + dc]);
+            if (v !== null) return v;
+          }
+          // Below
+          for (let dr = 1; dr <= 2; dr++) {
+            const belowRow = values[r + dr];
+            if (!belowRow) continue;
+            const v = cellNum(belowRow[c]);
+            if (v !== null) return v;
           }
           return null;
         };
 
-        // Order matters: match more specific labels first
-        if (matchLabel("total expenses") && !("totalExpenses" in found)) {
-          const v = getRight();
-          if (v !== null) found["totalExpenses"] = v;
-        } else if (matchLabel("total spend") && !("totalSpend" in found)) {
-          const v = getRight();
-          if (v !== null) found["totalSpend"] = v;
-        } else if (matchLabel("net income") && !("netIncome" in found)) {
-          const v = getRight();
-          if (v !== null) found["netIncome"] = v;
-        } else if (matchLabel("profit on sales") && !("profitOnSales" in found)) {
-          const v = getRight();
-          if (v !== null) found["profitOnSales"] = v;
-        } else if (matchLabel("unsold inventory") && !("unsoldInventoryCost" in found)) {
-          const v = getRight();
-          if (v !== null) found["unsoldInventoryCost"] = v;
-        } else if (matchLabel("revenue") && !("revenue" in found)) {
-          const v = getRight();
-          if (v !== null) found["revenue"] = v;
-        } else if (
-          (cell === "expenses" || matchLabel("extra expenses") || matchLabel("additional expenses")) &&
-          !("extraExpenses" in found)
-        ) {
-          const v = getRight();
-          if (v !== null) found["extraExpenses"] = v;
+        // Match more specific labels first to avoid "expenses" grabbing "total expenses"
+        let key: string | null = null;
+        if (matchLabel("total expenses") || matchLabel("total expense")) key = "totalExpenses";
+        else if (matchLabel("total spend") || matchLabel("total cost") || matchLabel("total purchase")) key = "totalSpend";
+        else if (matchLabel("net income") || matchLabel("net profit")) key = "netIncome";
+        else if (matchLabel("profit on sales") || matchLabel("profit on sale") || matchLabel("sales profit")) key = "profitOnSales";
+        else if (matchLabel("unsold inventory") || matchLabel("unsold stock") || matchLabel("inventory cost")) key = "unsoldInventoryCost";
+        else if (matchLabel("revenue") || matchLabel("total revenue") || matchLabel("total income")) key = "revenue";
+        else if (cell === "expenses" || matchLabel("extra expenses") || matchLabel("additional expenses") || matchLabel("other expenses")) key = "extraExpenses";
+
+        if (key && !(key in found)) {
+          const v = findValue();
+          if (v !== null) {
+            found[key] = v;
+            console.log(`[sync] Financial Summary KPI: "${cell}" (row ${r}, col ${c}) → ${key} = ${v}`);
+          }
         }
       }
     }
 
     console.log("[sync] Financial Summary KPIs found:", found);
 
-    // Return null if we didn't find the essential values
-    if (!("revenue" in found) && !("totalExpenses" in found) && !("netIncome" in found)) {
+    // Return null if we didn't find any essential values
+    if (Object.keys(found).length === 0) {
       console.log("[sync] Financial Summary: no KPI values found in tab");
+      // Log all non-empty cells to help debug label matching
+      for (let r = 0; r < values.length; r++) {
+        const row = values[r] ?? [];
+        const nonEmpty = row
+          .map((v: unknown, i: number) => (v !== null && v !== undefined && String(v).trim() ? `[${i}]=${v}` : ""))
+          .filter(Boolean);
+        if (nonEmpty.length > 0) {
+          console.log(`[sync]   Row ${r}: ${nonEmpty.join(" | ")}`);
+        }
+      }
       return null;
     }
 
@@ -474,16 +500,18 @@ export async function fetchSheetData(): Promise<SheetsData> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
 
-  // SHEET_ID_3 is ONLY used for the payout table (Financial Summary sheet)
-  // Do NOT include it in ticket/expense fetching to avoid duplicating data
-  const ticketExpenseSheetIds = [SHEET_ID, SHEET_ID_2].filter(Boolean);
-  console.log(`[sync] Fetching ticket/expense data from ${ticketExpenseSheetIds.length} sheet(s):`, ticketExpenseSheetIds);
-  console.log(`[sync] Fetching payout table from SHEET_ID_3:`, SHEET_ID_3 || "NOT SET");
+  // Deduplicate sheet IDs — if SHEET_ID and SHEET_ID_2 are the same, only fetch once
+  const ticketExpenseSheetIds = [...new Set([SHEET_ID, SHEET_ID_2].filter(Boolean))];
+  // For Financial Summary / Payout: try SHEET_ID_3, then fall back to SHEET_ID
+  const summarySheetId = SHEET_ID_3 || SHEET_ID;
+
+  console.log(`[sync] Fetching ticket/expense data from ${ticketExpenseSheetIds.length} unique sheet(s):`, ticketExpenseSheetIds);
+  console.log(`[sync] Fetching Financial Summary + Payout from:`, summarySheetId);
 
   const [results, payoutEntries, financialSummary] = await Promise.all([
     Promise.all(ticketExpenseSheetIds.map((id) => fetchFromSheet(sheets, id))),
-    SHEET_ID_3 ? fetchPayoutTable(sheets, SHEET_ID_3) : Promise.resolve([]),
-    SHEET_ID_3 ? fetchFinancialSummaryKPIs(sheets, SHEET_ID_3) : Promise.resolve(null),
+    fetchPayoutTable(sheets, summarySheetId),
+    fetchFinancialSummaryKPIs(sheets, summarySheetId),
   ]);
 
   const merged: SheetsData = {
