@@ -199,7 +199,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const totalAwaitingPayout = round2(awaitingPayoutByPlatform.reduce((s, r) => s + r.amount, 0));
   const stubhubAwaitingPayout = round2(
     awaitingPayoutByPlatform
-      .filter((p) => p.platform.toLowerCase().includes("stubhub"))
+      .filter((p) => p.platform.toLowerCase().includes("stubhub.com"))
       .reduce((s, r) => s + r.amount, 0)
   );
 
