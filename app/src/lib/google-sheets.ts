@@ -190,6 +190,126 @@ function parseExpenseRows(rows: Record<string, CellValue>[]): RawExpenseRow[] {
     .filter((r): r is RawExpenseRow => r !== null);
 }
 
+// ─── Financial Summary parsers ────────────────────────────────────────────────
+
+export interface FinancialSummaryKPIs {
+  totalExpenses: number;
+  totalSpend: number;
+  revenue: number;
+  netIncome: number;
+  profitOnSales: number;
+  extraExpenses: number;
+  unsoldInventoryCost: number;
+}
+
+/**
+ * Reads the Financial Summary tab and extracts the main KPI values.
+ * Strategy: scan every cell for known label keywords; the value is in the
+ * adjacent cell to the right (or, if the label spans cols, one column over).
+ */
+export async function fetchFinancialSummaryKPIs(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string
+): Promise<FinancialSummaryKPIs | null> {
+  if (!spreadsheetId) return null;
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const tabNames = (meta.data.sheets ?? [])
+      .map((s) => s.properties?.title ?? "")
+      .filter(Boolean);
+
+    const summaryTab = tabNames.find((t) =>
+      ["financial", "summary", "dashboard"].some((kw) =>
+        t.toLowerCase().includes(kw)
+      )
+    ) ?? tabNames[0];
+
+    if (!summaryTab) return null;
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${summaryTab}'`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "SERIAL_NUMBER",
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const values = (res.data.values ?? []) as any[][];
+
+    // Build a map of label (normalised) → number value found to its right
+    const found: Record<string, number> = {};
+
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r] ?? [];
+      for (let c = 0; c < row.length; c++) {
+        const cell = String(row[c] ?? "").toLowerCase().trim();
+        if (!cell) continue;
+
+        // Check against known labels (match if cell contains the keyword)
+        const matchLabel = (kw: string) => cell === kw || cell.includes(kw);
+
+        // Look right for the numeric value (skip empty cells, try up to 3 cols)
+        const getRight = () => {
+          for (let dc = 1; dc <= 3; dc++) {
+            const v = row[c + dc];
+            if (typeof v === "number" && !isNaN(v)) return v;
+            if (typeof v === "string" && v.trim() && num(v) !== 0) return num(v);
+          }
+          return null;
+        };
+
+        // Order matters: match more specific labels first
+        if (matchLabel("total expenses") && !("totalExpenses" in found)) {
+          const v = getRight();
+          if (v !== null) found["totalExpenses"] = v;
+        } else if (matchLabel("total spend") && !("totalSpend" in found)) {
+          const v = getRight();
+          if (v !== null) found["totalSpend"] = v;
+        } else if (matchLabel("net income") && !("netIncome" in found)) {
+          const v = getRight();
+          if (v !== null) found["netIncome"] = v;
+        } else if (matchLabel("profit on sales") && !("profitOnSales" in found)) {
+          const v = getRight();
+          if (v !== null) found["profitOnSales"] = v;
+        } else if (matchLabel("unsold inventory") && !("unsoldInventoryCost" in found)) {
+          const v = getRight();
+          if (v !== null) found["unsoldInventoryCost"] = v;
+        } else if (matchLabel("revenue") && !("revenue" in found)) {
+          const v = getRight();
+          if (v !== null) found["revenue"] = v;
+        } else if (
+          (cell === "expenses" || matchLabel("extra expenses") || matchLabel("additional expenses")) &&
+          !("extraExpenses" in found)
+        ) {
+          const v = getRight();
+          if (v !== null) found["extraExpenses"] = v;
+        }
+      }
+    }
+
+    console.log("[sync] Financial Summary KPIs found:", found);
+
+    // Return null if we didn't find the essential values
+    if (!("revenue" in found) && !("totalExpenses" in found) && !("netIncome" in found)) {
+      console.log("[sync] Financial Summary: no KPI values found in tab");
+      return null;
+    }
+
+    return {
+      totalExpenses: found["totalExpenses"] ?? 0,
+      totalSpend: found["totalSpend"] ?? 0,
+      revenue: found["revenue"] ?? 0,
+      netIncome: found["netIncome"] ?? 0,
+      profitOnSales: found["profitOnSales"] ?? 0,
+      extraExpenses: found["extraExpenses"] ?? 0,
+      unsoldInventoryCost: found["unsoldInventoryCost"] ?? 0,
+    };
+  } catch (err) {
+    console.error("[sync] Failed to fetch Financial Summary KPIs:", err);
+    return null;
+  }
+}
+
 // ─── Payout table parser ──────────────────────────────────────────────────────
 
 export interface PayoutEntry {
@@ -277,6 +397,7 @@ export interface SheetsData {
   tickets: RawTicketRow[];
   expenses: RawExpenseRow[];
   payoutEntries: PayoutEntry[];
+  financialSummary: FinancialSummaryKPIs | null;
 }
 
 async function fetchFromSheet(
@@ -346,7 +467,7 @@ async function fetchFromSheet(
     console.log(`[sync] Expense total: ${total.toFixed(2)}`);
   }
 
-  return { tickets, expenses, payoutEntries: [] };
+  return { tickets, expenses, payoutEntries: [], financialSummary: null };
 }
 
 export async function fetchSheetData(): Promise<SheetsData> {
@@ -359,15 +480,17 @@ export async function fetchSheetData(): Promise<SheetsData> {
   console.log(`[sync] Fetching ticket/expense data from ${ticketExpenseSheetIds.length} sheet(s):`, ticketExpenseSheetIds);
   console.log(`[sync] Fetching payout table from SHEET_ID_3:`, SHEET_ID_3 || "NOT SET");
 
-  const [results, payoutEntries] = await Promise.all([
+  const [results, payoutEntries, financialSummary] = await Promise.all([
     Promise.all(ticketExpenseSheetIds.map((id) => fetchFromSheet(sheets, id))),
     SHEET_ID_3 ? fetchPayoutTable(sheets, SHEET_ID_3) : Promise.resolve([]),
+    SHEET_ID_3 ? fetchFinancialSummaryKPIs(sheets, SHEET_ID_3) : Promise.resolve(null),
   ]);
 
   const merged: SheetsData = {
     tickets: results.flatMap((r) => r.tickets),
     expenses: results.flatMap((r) => r.expenses),
     payoutEntries,
+    financialSummary,
   };
 
   console.log(`[sync] Merged totals — tickets: ${merged.tickets.length}, expenses: ${merged.expenses.length}, payout entries: ${payoutEntries.length}`);

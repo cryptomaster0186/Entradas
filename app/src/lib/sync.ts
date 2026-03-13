@@ -22,7 +22,7 @@ export async function runSync(triggeredBy: "manual" | "cron" = "manual"): Promis
 
   try {
     // 1. Fetch fresh data from Google Sheets
-    const { tickets, expenses, payoutEntries } = await fetchSheetData();
+    const { tickets, expenses, payoutEntries, financialSummary } = await fetchSheetData();
 
     // 2. Wipe all previously synced Google-Sheets data in a transaction
     await prisma.$transaction(async (tx) => {
@@ -74,7 +74,7 @@ export async function runSync(triggeredBy: "manual" | "cron" = "manual"): Promis
     console.log(`  Total Expenses:  ${totalExpenses.toFixed(2)}  (expected ~22811.66)`);
     console.log(`  Net Income:      ${netIncome.toFixed(2)}  (expected ~-6048.12)`);
 
-    // 5. Mark sync complete, store payout snapshot
+    // 5. Mark sync complete, store payout + summary snapshots
     await prisma.syncLog.update({
       where: { id: log.id },
       data: {
@@ -83,6 +83,7 @@ export async function runSync(triggeredBy: "manual" | "cron" = "manual"): Promis
         rowsTickets: tickets.length,
         rowsExpenses: expenses.length,
         payoutSnapshot: payoutEntries.length > 0 ? JSON.stringify(payoutEntries) : null,
+        summarySnapshot: financialSummary ? JSON.stringify(financialSummary) : null,
       },
     });
 

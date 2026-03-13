@@ -1,7 +1,9 @@
 /**
  * Dashboard KPI calculations.
- * All numbers are derived from the raw TicketData and Expense tables —
- * never from a "Financial Summary" sheet.
+ *
+ * KPI cards are sourced from the Financial Summary sheet snapshot stored during
+ * the last successful sync. If no snapshot exists, we fall back to aggregating
+ * from the raw TicketData and Expense tables.
  */
 import { prisma } from "@/lib/prisma";
 
@@ -12,6 +14,7 @@ export interface KPISummary {
   extraExpenses: number;    // sum of amount     (Expenses)
   totalExpenses: number;    // totalSpend + extraExpenses
   netIncome: number;        // revenue - totalExpenses
+  unsoldInventoryCost: number; // from Financial Summary sheet
 }
 
 export interface PlatformBreakdown {
@@ -59,6 +62,7 @@ export interface DashboardData {
   worstEvents: EventPerformance[];
   accountPerformance: AccountPerformance[];
   lastImport: { filename: string; uploadedAt: string } | null;
+  kpisFromSheet: boolean; // true when KPIs come from Financial Summary snapshot
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,21 +85,21 @@ export async function getDashboardData(): Promise<DashboardData> {
     accountRows,
     lastImport,
   ] = await Promise.all([
-    // KPI aggregations from Ticket Data
+    // KPI aggregations from Ticket Data (used as fallback)
     prisma.ticketData.aggregate({
       _sum: { totalCost: true, income: true, profit: true },
     }),
 
-    // Extra expenses aggregation
+    // Extra expenses aggregation (used as fallback)
     prisma.expense.aggregate({
       _sum: { amount: true },
     }),
 
-    // Latest completed sync log (to read payout snapshot)
+    // Latest completed sync log (to read snapshots)
     prisma.syncLog.findFirst({
       where: { status: "COMPLETED" },
       orderBy: { startedAt: "desc" },
-      select: { payoutSnapshot: true },
+      select: { payoutSnapshot: true, summarySnapshot: true },
     }),
 
     // Platform breakdown (only rows with a platform)
@@ -136,14 +140,47 @@ export async function getDashboardData(): Promise<DashboardData> {
     }),
   ]);
 
-  const totalSpend = round2(ticketAgg._sum.totalCost ?? 0);
-  const revenue = round2(ticketAgg._sum.income ?? 0);
-  const profitOnSales = round2(ticketAgg._sum.profit ?? 0);
-  const extraExpenses = round2(expenseAgg._sum.amount ?? 0);
-  const totalExpenses = round2(totalSpend + extraExpenses);
-  const netIncome = round2(revenue - totalExpenses);
+  // ── KPIs: prefer Financial Summary snapshot, fall back to DB aggregation ──
+  let kpis: KPISummary;
+  let kpisFromSheet = false;
 
-  // Parse payout snapshot from latest sync (read directly from Financial Summary sheet)
+  try {
+    const summaryRaw = latestSync?.summarySnapshot;
+    if (summaryRaw) {
+      const snap = JSON.parse(summaryRaw) as {
+        totalExpenses: number;
+        totalSpend: number;
+        revenue: number;
+        netIncome: number;
+        profitOnSales: number;
+        extraExpenses: number;
+        unsoldInventoryCost: number;
+      };
+      kpis = {
+        totalSpend: round2(snap.totalSpend ?? 0),
+        revenue: round2(snap.revenue ?? 0),
+        profitOnSales: round2(snap.profitOnSales ?? 0),
+        extraExpenses: round2(snap.extraExpenses ?? 0),
+        totalExpenses: round2(snap.totalExpenses ?? 0),
+        netIncome: round2(snap.netIncome ?? 0),
+        unsoldInventoryCost: round2(snap.unsoldInventoryCost ?? 0),
+      };
+      kpisFromSheet = true;
+    } else {
+      throw new Error("no snapshot");
+    }
+  } catch {
+    // Fallback: calculate from DB
+    const totalSpend = round2(ticketAgg._sum.totalCost ?? 0);
+    const revenue = round2(ticketAgg._sum.income ?? 0);
+    const profitOnSales = round2(ticketAgg._sum.profit ?? 0);
+    const extraExpenses = round2(expenseAgg._sum.amount ?? 0);
+    const totalExpenses = round2(totalSpend + extraExpenses);
+    const netIncome = round2(revenue - totalExpenses);
+    kpis = { totalSpend, revenue, profitOnSales, extraExpenses, totalExpenses, netIncome, unsoldInventoryCost: 0 };
+  }
+
+  // ── Awaiting payout from payout snapshot ──
   let awaitingPayoutByPlatform: AwaitingPayout[] = [];
   try {
     const snapshot = latestSync?.payoutSnapshot;
@@ -195,7 +232,8 @@ export async function getDashboardData(): Promise<DashboardData> {
     }));
 
   return {
-    kpis: { totalSpend, revenue, profitOnSales, extraExpenses, totalExpenses, netIncome },
+    kpis,
+    kpisFromSheet,
     awaitingPayoutByPlatform,
     totalAwaitingPayout,
     platformBreakdown,

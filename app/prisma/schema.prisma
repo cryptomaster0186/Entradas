@@ -104,9 +104,10 @@ model SyncLog {
   status       SyncStatus @default(RUNNING)
   rowsTickets  Int        @default(0)
   rowsExpenses Int        @default(0)
-  triggeredBy     String     @default("manual") // "manual" | "cron"
-  error           String?
-  payoutSnapshot  String?    // JSON: PayoutEntry[] read from Financial Summary sheet
+  triggeredBy      String     @default("manual") // "manual" | "cron"
+  error            String?
+  payoutSnapshot   String?    // JSON: PayoutEntry[] read from Financial Summary sheet
+  summarySnapshot  String?    // JSON: FinancialSummaryKPIs read from Financial Summary sheet
 }
 
 enum SyncStatus {
