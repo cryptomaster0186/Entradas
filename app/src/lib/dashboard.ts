@@ -74,7 +74,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const [
     ticketAgg,
     expenseAgg,
-    awaitingPayoutRows,
+    latestSync,
     platformRows,
     statusRows,
     eventRows,
@@ -91,13 +91,11 @@ export async function getDashboardData(): Promise<DashboardData> {
       _sum: { amount: true },
     }),
 
-    // Awaiting payout: sold tickets where paidOut = false, grouped by selling platform
-    prisma.ticketData.groupBy({
-      by: ["platform"],
-      where: { paidOut: false, income: { gt: 0 } },
-      _count: { id: true },
-      _sum: { income: true },
-      orderBy: { _sum: { income: "desc" } },
+    // Latest completed sync log (to read payout snapshot)
+    prisma.syncLog.findFirst({
+      where: { status: "COMPLETED" },
+      orderBy: { startedAt: "desc" },
+      select: { payoutSnapshot: true },
     }),
 
     // Platform breakdown (only rows with a platform)
@@ -145,11 +143,21 @@ export async function getDashboardData(): Promise<DashboardData> {
   const totalExpenses = round2(totalSpend + extraExpenses);
   const netIncome = round2(revenue - totalExpenses);
 
-  const awaitingPayoutByPlatform: AwaitingPayout[] = awaitingPayoutRows.map((r) => ({
-    platform: r.platform ?? "Unknown",
-    count: r._count.id,
-    amount: round2(r._sum.income ?? 0),
-  }));
+  // Parse payout snapshot from latest sync (read directly from Financial Summary sheet)
+  let awaitingPayoutByPlatform: AwaitingPayout[] = [];
+  try {
+    const snapshot = latestSync?.payoutSnapshot;
+    if (snapshot) {
+      const parsed = JSON.parse(snapshot) as { platform: string; amount: number }[];
+      awaitingPayoutByPlatform = parsed.map((e) => ({
+        platform: e.platform,
+        count: 0,
+        amount: round2(e.amount),
+      }));
+    }
+  } catch {
+    awaitingPayoutByPlatform = [];
+  }
   const totalAwaitingPayout = round2(awaitingPayoutByPlatform.reduce((s, r) => s + r.amount, 0));
 
   const platformBreakdown: PlatformBreakdown[] = platformRows.map((r) => ({

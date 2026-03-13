@@ -222,7 +222,6 @@ export function DashboardClient({
                     <thead>
                       <tr className="border-b border-gray-800">
                         <th className="text-left py-2 text-gray-500 font-medium">Platform</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Tickets</th>
                         <th className="text-right py-2 text-gray-500 font-medium">Awaiting</th>
                       </tr>
                     </thead>
@@ -230,7 +229,6 @@ export function DashboardClient({
                       {data.awaitingPayoutByPlatform.map((p, i) => (
                         <tr key={i} className="border-b border-gray-800/40 last:border-0">
                           <td className="py-2 text-gray-300">{p.platform}</td>
-                          <td className="py-2 text-right text-gray-400">{p.count}</td>
                           <td className="py-2 text-right font-semibold text-amber-400">
                             {eur(p.amount)}
                           </td>

@@ -190,11 +190,93 @@ function parseExpenseRows(rows: Record<string, CellValue>[]): RawExpenseRow[] {
     .filter((r): r is RawExpenseRow => r !== null);
 }
 
+// ─── Payout table parser ──────────────────────────────────────────────────────
+
+export interface PayoutEntry {
+  platform: string;
+  amount: number;
+}
+
+/**
+ * Reads the "Financial Summary" (or similar) tab and extracts the Payout table.
+ * Strategy: find the cell containing "Payout" header, then read platform names
+ * from the column to its left and amounts from that column, until "SUM" or empty.
+ */
+export async function fetchPayoutTable(
+  sheets: ReturnType<typeof google.sheets>,
+  spreadsheetId: string
+): Promise<PayoutEntry[]> {
+  if (!spreadsheetId) return [];
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const tabNames = (meta.data.sheets ?? [])
+      .map((s) => s.properties?.title ?? "")
+      .filter(Boolean);
+
+    const summaryTab = tabNames.find((t) =>
+      ["financial", "summary", "dashboard", "payout"].some((kw) =>
+        t.toLowerCase().includes(kw)
+      )
+    ) ?? tabNames[0];
+
+    if (!summaryTab) return [];
+
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'${summaryTab}'`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+      dateTimeRenderOption: "SERIAL_NUMBER",
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const values = (res.data.values ?? []) as any[][];
+
+    // Find the "Payout" header cell
+    let payoutCol = -1;
+    let payoutRow = -1;
+    for (let r = 0; r < values.length; r++) {
+      for (let c = 0; c < (values[r]?.length ?? 0); c++) {
+        if (String(values[r][c] ?? "").toLowerCase().trim() === "payout") {
+          payoutCol = c;
+          payoutRow = r;
+          break;
+        }
+      }
+      if (payoutCol !== -1) break;
+    }
+
+    if (payoutCol === -1) {
+      console.log("[sync] Payout header not found in Financial Summary tab");
+      return [];
+    }
+
+    // Read rows below the header: platform name is in column to the left, amount is payoutCol
+    const entries: PayoutEntry[] = [];
+    for (let r = payoutRow + 1; r < values.length; r++) {
+      const row = values[r] ?? [];
+      const platform = String(row[payoutCol - 1] ?? "").trim();
+      const amount = row[payoutCol];
+
+      if (!platform || platform.toLowerCase() === "sum") break;
+      if (typeof amount === "number" && amount > 0) {
+        entries.push({ platform, amount });
+      }
+    }
+
+    console.log(`[sync] Payout table from Financial Summary: ${entries.length} entries`, entries);
+    return entries;
+  } catch (err) {
+    console.error("[sync] Failed to fetch payout table:", err);
+    return [];
+  }
+}
+
 // ─── Main fetch ───────────────────────────────────────────────────────────────
 
 export interface SheetsData {
   tickets: RawTicketRow[];
   expenses: RawExpenseRow[];
+  payoutEntries: PayoutEntry[];
 }
 
 async function fetchFromSheet(
@@ -264,7 +346,7 @@ async function fetchFromSheet(
     console.log(`[sync] Expense total: ${total.toFixed(2)}`);
   }
 
-  return { tickets, expenses };
+  return { tickets, expenses, payoutEntries: [] };
 }
 
 export async function fetchSheetData(): Promise<SheetsData> {
@@ -274,16 +356,19 @@ export async function fetchSheetData(): Promise<SheetsData> {
   const sheetIds = [SHEET_ID, SHEET_ID_2, SHEET_ID_3].filter(Boolean);
   console.log(`[sync] Fetching from ${sheetIds.length} sheet(s):`, sheetIds);
 
-  const results = await Promise.all(
-    sheetIds.map((id) => fetchFromSheet(sheets, id))
-  );
+  // Fetch ticket/expense data from all sheets + payout table from SHEET_ID_3
+  const [results, payoutEntries] = await Promise.all([
+    Promise.all(sheetIds.map((id) => fetchFromSheet(sheets, id))),
+    SHEET_ID_3 ? fetchPayoutTable(sheets, SHEET_ID_3) : Promise.resolve([]),
+  ]);
 
-  const merged = {
+  const merged: SheetsData = {
     tickets: results.flatMap((r) => r.tickets),
     expenses: results.flatMap((r) => r.expenses),
+    payoutEntries,
   };
 
-  console.log(`[sync] Merged totals — tickets: ${merged.tickets.length}, expenses: ${merged.expenses.length}`);
+  console.log(`[sync] Merged totals — tickets: ${merged.tickets.length}, expenses: ${merged.expenses.length}, payout entries: ${payoutEntries.length}`);
 
   return merged;
 }
