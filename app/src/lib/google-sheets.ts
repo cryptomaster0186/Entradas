@@ -20,8 +20,8 @@ export const SHEET_ID =
 
 export const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2 ?? "";
 
-const TICKET_TAB = "Ticket Data";
-const EXPENSE_TAB = "Expenses";
+const TICKET_TAB_VARIANTS = ["Ticket Data", "1 Ticket Data", "ticket data", "Tickets"];
+const EXPENSE_TAB_VARIANTS = ["Expenses", "expenses", "Expense"];
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -101,14 +101,14 @@ function parseTicketRows(rows: Record<string, string>[]): RawTicketRow[] {
         venue: str(pick(row, "venue", "location")),
         section: str(pick(row, "section", "sec")),
         row: str(pick(row, "row")),
-        seats: str(pick(row, "seats", "seat", "seat numbers")),
-        quantity: Math.max(1, num(pick(row, "quantity", "qty", "tickets"))),
+        seats: str(pick(row, "seats", "seat", "seat numbers", "seat from")),
+        quantity: Math.max(1, num(pick(row, "quantity", "qty", "qty bought", "tickets"))),
         totalCost: num(pick(row, "total cost", "cost", "purchase price", "paid")),
         income: num(pick(row, "income", "revenue", "sale price", "proceeds")),
         profit: num(pick(row, "profit", "net profit", "gain")),
-        platform: str(pick(row, "platform", "marketplace", "site")),
+        platform: str(pick(row, "platform", "marketplace", "site", "purchased at", "sold/listed")),
         account: str(pick(row, "account", "seller account", "account name")),
-        status: str(pick(row, "status", "sale status", "listing status")),
+        status: str(pick(row, "status", "sale status", "listing status", "paid out", "all delivered")),
       } satisfies RawTicketRow;
     })
     .filter((r): r is RawTicketRow => r !== null);
@@ -156,9 +156,17 @@ async function fetchFromSheet(
     }
   };
 
+  const getFirstMatch = async (variants: string[]) => {
+    for (const name of variants) {
+      const values = await safeGet(name);
+      if (values.length > 0) return values;
+    }
+    return [] as string[][];
+  };
+
   const [ticketValues, expenseValues] = await Promise.all([
-    safeGet(TICKET_TAB),
-    safeGet(EXPENSE_TAB),
+    getFirstMatch(TICKET_TAB_VARIANTS),
+    getFirstMatch(EXPENSE_TAB_VARIANTS),
   ]);
 
   return {
