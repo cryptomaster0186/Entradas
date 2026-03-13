@@ -289,7 +289,7 @@ export async function fetchFinancialSummaryKPIs(
         else if (matchLabel("total spend") || matchLabel("total cost") || matchLabel("total purchase")) key = "totalSpend";
         else if (matchLabel("net income") || matchLabel("net profit")) key = "netIncome";
         else if (matchLabel("profit on sales") || matchLabel("profit on sale") || matchLabel("sales profit")) key = "profitOnSales";
-        else if (matchLabel("unsold inventory") || matchLabel("unsold stock") || matchLabel("inventory cost")) key = "unsoldInventoryCost";
+        else if (matchLabel("unsold inventory") || matchLabel("unsold stock") || matchLabel("inventory cost") || matchLabel("unsold ticket") || matchLabel("unsold") || matchLabel("inventory value")) key = "unsoldInventoryCost";
         else if (matchLabel("revenue") || matchLabel("total revenue") || matchLabel("total income")) key = "revenue";
         else if (cell === "expenses" || matchLabel("extra expenses") || matchLabel("additional expenses") || matchLabel("other expenses")) key = "extraExpenses";
 
@@ -453,23 +453,24 @@ export async function fetchPayoutTable(
         // Layout C: first non-empty string col = platform, first number col = amount
         if (!platform) {
           let foundPlatform = "";
-          let foundAmount = 0;
+          let foundAmount: number | null = null;
           for (let c = 0; c < row.length; c++) {
             const v = row[c];
             if (!foundPlatform && typeof v === "string" && v.trim() && !/^\d/.test(v.trim())) {
               foundPlatform = v.trim();
             }
-            if (!foundAmount && typeof v === "number" && v > 0) {
+            if (foundAmount === null && typeof v === "number") {
               foundAmount = v;
             }
           }
-          if (foundPlatform && foundAmount) {
+          if (foundPlatform && foundAmount !== null) {
             platform = foundPlatform;
             amount = foundAmount;
           }
         }
 
-        if (platform && amount > 0) {
+        // Include all platforms with a numeric amount (even 0)
+        if (platform) {
           entries.push({ platform, amount });
         }
       }
