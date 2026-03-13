@@ -344,9 +344,14 @@ export interface PayoutEntry {
 }
 
 /**
- * Reads the "Financial Summary" (or similar) tab and extracts the Payout table.
- * Strategy: find the cell containing "Payout" header, then read platform names
- * from the column to its left and amounts from that column, until "SUM" or empty.
+ * Reads the payout table from a sheet.
+ * Searches every tab for a cell containing "payout" (or "awaiting payout").
+ * Then reads rows below to extract platform + amount pairs.
+ *
+ * Tries multiple layouts:
+ *   Layout A: header row has [Platform, Payout] → platform same col-1, amount header col
+ *   Layout B: header row has [Payout] alone → platform same col, amount col+1
+ *   Layout C: two-column table where col 0=platform, col 1=amount (header contains "payout")
  */
 export async function fetchPayoutTable(
   sheets: ReturnType<typeof google.sheets>,
@@ -359,58 +364,124 @@ export async function fetchPayoutTable(
       .map((s) => s.properties?.title ?? "")
       .filter(Boolean);
 
-    const summaryTab = tabNames.find((t) =>
-      ["financial", "summary", "dashboard", "payout"].some((kw) =>
+    console.log(`[sync] Payout: searching tabs in sheet ${spreadsheetId}:`, tabNames);
+
+    // Try tabs matching keywords first, then all tabs
+    const priorityTabs = tabNames.filter((t) =>
+      ["financial", "summary", "dashboard", "payout", "awaiting"].some((kw) =>
         t.toLowerCase().includes(kw)
       )
-    ) ?? tabNames[0];
+    );
+    const tabsToSearch = [...priorityTabs, ...tabNames.filter((t) => !priorityTabs.includes(t))];
 
-    if (!summaryTab) return [];
+    for (const tab of tabsToSearch) {
+      const res = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `'${tab}'`,
+        valueRenderOption: "UNFORMATTED_VALUE",
+        dateTimeRenderOption: "SERIAL_NUMBER",
+      });
 
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `'${summaryTab}'`,
-      valueRenderOption: "UNFORMATTED_VALUE",
-      dateTimeRenderOption: "SERIAL_NUMBER",
-    });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const values = (res.data.values ?? []) as any[][];
+      if (values.length === 0) continue;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const values = (res.data.values ?? []) as any[][];
+      // Log tab structure for debugging
+      console.log(`[sync] Payout: scanning tab "${tab}" (${values.length} rows)`);
+      for (let r = 0; r < Math.min(values.length, 3); r++) {
+        console.log(`[sync]   Row ${r}:`, values[r]?.slice(0, 10));
+      }
 
-    // Find the "Payout" header cell
-    let payoutCol = -1;
-    let payoutRow = -1;
-    for (let r = 0; r < values.length; r++) {
-      for (let c = 0; c < (values[r]?.length ?? 0); c++) {
-        if (String(values[r][c] ?? "").toLowerCase().trim() === "payout") {
-          payoutCol = c;
-          payoutRow = r;
-          break;
+      // Find any cell containing "payout" (matches "Payout", "Awaiting Payout", etc.)
+      let headerCol = -1;
+      let headerRow = -1;
+      for (let r = 0; r < values.length; r++) {
+        for (let c = 0; c < (values[r]?.length ?? 0); c++) {
+          const cell = String(values[r][c] ?? "").toLowerCase().trim();
+          if (cell.includes("payout") || cell.includes("pay out")) {
+            headerCol = c;
+            headerRow = r;
+            console.log(`[sync] Payout: found header "${values[r][c]}" at row ${r}, col ${c}`);
+            break;
+          }
+        }
+        if (headerCol !== -1) break;
+      }
+
+      if (headerCol === -1) continue;
+
+      // Log a few rows below header for debugging
+      for (let r = headerRow; r < Math.min(values.length, headerRow + 8); r++) {
+        console.log(`[sync]   Payout data row ${r}:`, values[r]?.slice(0, 10));
+      }
+
+      // Try to read platform + amount rows below the header
+      const entries: PayoutEntry[] = [];
+
+      for (let r = headerRow + 1; r < values.length; r++) {
+        const row = values[r] ?? [];
+
+        // Stop at SUM row, TOTAL row, or empty row
+        const allCellsStr = row.map((v: unknown) => String(v ?? "").toLowerCase().trim());
+        if (allCellsStr.some((s: string) => s === "sum" || s === "total")) break;
+        if (row.every((v: unknown) => v === null || v === undefined || String(v).trim() === "")) break;
+
+        // Try multiple layouts to find platform + amount pair
+        let platform = "";
+        let amount = 0;
+
+        // Layout A: platform is in col to the left of header, amount is in header col
+        if (headerCol > 0) {
+          const pA = String(row[headerCol - 1] ?? "").trim();
+          const aA = row[headerCol];
+          if (pA && typeof aA === "number") {
+            platform = pA;
+            amount = aA;
+          }
+        }
+
+        // Layout B: platform is in header col, amount is in col to the right
+        if (!platform) {
+          const pB = String(row[headerCol] ?? "").trim();
+          const aB = row[headerCol + 1];
+          if (pB && typeof aB === "number") {
+            platform = pB;
+            amount = aB;
+          }
+        }
+
+        // Layout C: first non-empty string col = platform, first number col = amount
+        if (!platform) {
+          let foundPlatform = "";
+          let foundAmount = 0;
+          for (let c = 0; c < row.length; c++) {
+            const v = row[c];
+            if (!foundPlatform && typeof v === "string" && v.trim() && !/^\d/.test(v.trim())) {
+              foundPlatform = v.trim();
+            }
+            if (!foundAmount && typeof v === "number" && v > 0) {
+              foundAmount = v;
+            }
+          }
+          if (foundPlatform && foundAmount) {
+            platform = foundPlatform;
+            amount = foundAmount;
+          }
+        }
+
+        if (platform && amount > 0) {
+          entries.push({ platform, amount });
         }
       }
-      if (payoutCol !== -1) break;
-    }
 
-    if (payoutCol === -1) {
-      console.log("[sync] Payout header not found in Financial Summary tab");
-      return [];
-    }
-
-    // Read rows below the header: platform name is in column to the left, amount is payoutCol
-    const entries: PayoutEntry[] = [];
-    for (let r = payoutRow + 1; r < values.length; r++) {
-      const row = values[r] ?? [];
-      const platform = String(row[payoutCol - 1] ?? "").trim();
-      const amount = row[payoutCol];
-
-      if (!platform || platform.toLowerCase() === "sum") break;
-      if (typeof amount === "number" && amount > 0) {
-        entries.push({ platform, amount });
+      if (entries.length > 0) {
+        console.log(`[sync] Payout table: ${entries.length} entries from tab "${tab}"`, entries);
+        return entries;
       }
     }
 
-    console.log(`[sync] Payout table from Financial Summary: ${entries.length} entries`, entries);
-    return entries;
+    console.log("[sync] Payout: no payout table found in any tab");
+    return [];
   } catch (err) {
     console.error("[sync] Failed to fetch payout table:", err);
     return [];
@@ -502,15 +573,27 @@ export async function fetchSheetData(): Promise<SheetsData> {
 
   // Deduplicate sheet IDs — if SHEET_ID and SHEET_ID_2 are the same, only fetch once
   const ticketExpenseSheetIds = [...new Set([SHEET_ID, SHEET_ID_2].filter(Boolean))];
-  // For Financial Summary / Payout: try SHEET_ID_3, then fall back to SHEET_ID
+  // For Financial Summary KPIs: try SHEET_ID_3, then fall back to SHEET_ID
   const summarySheetId = SHEET_ID_3 || SHEET_ID;
+  // For Payout table: try SHEET_ID_3 first, then also try SHEET_ID as fallback
+  const payoutSheetIds = [...new Set([SHEET_ID_3, SHEET_ID].filter(Boolean))];
 
   console.log(`[sync] Fetching ticket/expense data from ${ticketExpenseSheetIds.length} unique sheet(s):`, ticketExpenseSheetIds);
-  console.log(`[sync] Fetching Financial Summary + Payout from:`, summarySheetId);
+  console.log(`[sync] Fetching Financial Summary from:`, summarySheetId);
+  console.log(`[sync] Fetching Payout table from (in order):`, payoutSheetIds);
+
+  // Try payout table from each sheet until we find one
+  const tryPayoutFromSheets = async (): Promise<PayoutEntry[]> => {
+    for (const id of payoutSheetIds) {
+      const entries = await fetchPayoutTable(sheets, id);
+      if (entries.length > 0) return entries;
+    }
+    return [];
+  };
 
   const [results, payoutEntries, financialSummary] = await Promise.all([
     Promise.all(ticketExpenseSheetIds.map((id) => fetchFromSheet(sheets, id))),
-    fetchPayoutTable(sheets, summarySheetId),
+    tryPayoutFromSheets(),
     fetchFinancialSummaryKPIs(sheets, summarySheetId),
   ]);
 
