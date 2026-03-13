@@ -255,7 +255,7 @@ export function DashboardClient({
                   )}
                 </div>
                 {data.upcomingUnsoldEvents.length > 0 ? (
-                  <div className="overflow-y-auto max-h-72 pr-1">
+                  <div className="overflow-y-auto max-h-[480px] pr-1">
                     <table className="w-full text-xs">
                       <thead className="sticky top-0 bg-gray-900">
                         <tr className="border-b border-gray-800">
