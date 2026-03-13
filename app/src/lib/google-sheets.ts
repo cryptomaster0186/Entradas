@@ -200,6 +200,7 @@ export interface FinancialSummaryKPIs {
   profitOnSales: number;
   extraExpenses: number;
   unsoldInventoryCost: number;
+  stubhubComPayout: number; // StubHub.com awaiting payout (separate from StubHub.ie)
 }
 
 /**
@@ -292,6 +293,7 @@ export async function fetchFinancialSummaryKPIs(
         else if (matchLabel("unsold inventory") || matchLabel("unsold stock") || matchLabel("inventory cost") || matchLabel("unsold ticket") || matchLabel("unsold") || matchLabel("inventory value")) key = "unsoldInventoryCost";
         else if (matchLabel("revenue") || matchLabel("total revenue") || matchLabel("total income")) key = "revenue";
         else if (cell === "expenses" || matchLabel("extra expenses") || matchLabel("additional expenses") || matchLabel("other expenses")) key = "extraExpenses";
+        else if (matchLabel("stubhub.com")) key = "stubhubComPayout";
 
         if (key && !(key in found)) {
           const v = findValue();
@@ -329,6 +331,7 @@ export async function fetchFinancialSummaryKPIs(
       profitOnSales: found["profitOnSales"] ?? 0,
       extraExpenses: found["extraExpenses"] ?? 0,
       unsoldInventoryCost: found["unsoldInventoryCost"] ?? 0,
+      stubhubComPayout: found["stubhubComPayout"] ?? 0,
     };
   } catch (err) {
     console.error("[sync] Failed to fetch Financial Summary KPIs:", err);
@@ -598,14 +601,27 @@ export async function fetchSheetData(): Promise<SheetsData> {
     fetchFinancialSummaryKPIs(sheets, summarySheetId),
   ]);
 
+  // If the Financial Summary sheet has a StubHub.com payout value, inject it as a
+  // separate payout entry (StubHub.com is tracked separately from StubHub.ie).
+  const mergedPayoutEntries = [...payoutEntries];
+  if (financialSummary && financialSummary.stubhubComPayout > 0) {
+    const alreadyPresent = mergedPayoutEntries.some(
+      (e) => e.platform.toLowerCase().includes("stubhub.com")
+    );
+    if (!alreadyPresent) {
+      mergedPayoutEntries.push({ platform: "StubHub.com", amount: financialSummary.stubhubComPayout });
+      console.log(`[sync] Injected StubHub.com payout from Financial Summary: ${financialSummary.stubhubComPayout}`);
+    }
+  }
+
   const merged: SheetsData = {
     tickets: results.flatMap((r) => r.tickets),
     expenses: results.flatMap((r) => r.expenses),
-    payoutEntries,
+    payoutEntries: mergedPayoutEntries,
     financialSummary,
   };
 
-  console.log(`[sync] Merged totals — tickets: ${merged.tickets.length}, expenses: ${merged.expenses.length}, payout entries: ${payoutEntries.length}`);
+  console.log(`[sync] Merged totals — tickets: ${merged.tickets.length}, expenses: ${merged.expenses.length}, payout entries: ${mergedPayoutEntries.length}`);
 
   return merged;
 }
