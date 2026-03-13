@@ -255,14 +255,14 @@ export function DashboardClient({
                   )}
                 </div>
                 {data.upcomingUnsoldEvents.length > 0 ? (
-                  <div className="overflow-y-auto max-h-72">
+                  <div className="overflow-y-auto max-h-72 pr-1">
                     <table className="w-full text-xs">
                       <thead className="sticky top-0 bg-gray-900">
                         <tr className="border-b border-gray-800">
                           <th className="text-left py-2 pr-3 text-gray-500 font-medium">Event</th>
                           <th className="text-left py-2 pr-3 text-gray-500 font-medium">Venue</th>
                           <th className="text-left py-2 pr-3 text-gray-500 font-medium">Date</th>
-                          <th className="text-right py-2 text-gray-500 font-medium">Unsold</th>
+                          <th className="text-right py-2 pr-2 text-gray-500 font-medium">Unsold</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -277,7 +277,7 @@ export function DashboardClient({
                                 year: "numeric",
                               })}
                             </td>
-                            <td className="py-2 text-right font-semibold text-amber-400">
+                            <td className="py-2 pr-2 text-right font-semibold text-amber-400">
                               {e.qtyUnsold}
                             </td>
                           </tr>
