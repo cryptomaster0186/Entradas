@@ -10,6 +10,10 @@ export interface SyncResult {
   rowsTickets: number;
   rowsExpenses: number;
   durationMs: number;
+  financialSummaryFound: boolean;
+  payoutEntriesCount: number;
+  financialSummary: Record<string, number> | null;
+  payoutEntries: { platform: string; amount: number }[];
 }
 
 export async function runSync(triggeredBy: "manual" | "cron" = "manual"): Promise<SyncResult> {
@@ -92,6 +96,10 @@ export async function runSync(triggeredBy: "manual" | "cron" = "manual"): Promis
       rowsTickets: tickets.length,
       rowsExpenses: expenses.length,
       durationMs: Date.now() - start,
+      financialSummaryFound: !!financialSummary,
+      payoutEntriesCount: payoutEntries.length,
+      financialSummary: financialSummary as Record<string, number> | null,
+      payoutEntries,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

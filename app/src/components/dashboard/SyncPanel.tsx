@@ -37,14 +37,23 @@ function duration(start: string, end: string | null) {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
+interface SyncDiag {
+  financialSummaryFound: boolean;
+  payoutEntriesCount: number;
+  financialSummary: Record<string, number> | null;
+  payoutEntries: { platform: string; amount: number }[];
+}
+
 export function SyncPanel({ logs: initialLogs, onSyncSuccess }: SyncPanelProps) {
   const [logs, setLogs] = useState<SyncLog[]>(initialLogs);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [diag, setDiag] = useState<SyncDiag | null>(null);
 
   async function triggerSync() {
     setSyncing(true);
     setMessage(null);
+    setDiag(null);
     try {
       const res = await fetch("/api/sync", { method: "POST" });
       const json = await res.json();
@@ -57,6 +66,12 @@ export function SyncPanel({ logs: initialLogs, onSyncSuccess }: SyncPanelProps) 
       setMessage({
         type: "success",
         text: `Synced ${json.rowsTickets} ticket rows and ${json.rowsExpenses} expense rows in ${json.durationMs}ms.`,
+      });
+      setDiag({
+        financialSummaryFound: json.financialSummaryFound ?? false,
+        payoutEntriesCount: json.payoutEntriesCount ?? 0,
+        financialSummary: json.financialSummary ?? null,
+        payoutEntries: json.payoutEntries ?? [],
       });
       onSyncSuccess();
     } catch {
@@ -136,6 +151,37 @@ export function SyncPanel({ logs: initialLogs, onSyncSuccess }: SyncPanelProps) 
               : "bg-red-500/10 border border-red-500/30 text-red-400"
           }`}>
             {message.text}
+          </div>
+        )}
+
+        {/* Sync diagnostics */}
+        {diag && (
+          <div className="mt-4 rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3 text-xs space-y-2">
+            <p className="text-gray-400 font-semibold uppercase tracking-wider text-[10px]">Sync Diagnostics</p>
+            <div className="flex gap-4 flex-wrap">
+              <span className={diag.financialSummaryFound ? "text-emerald-400" : "text-red-400"}>
+                Financial Summary: {diag.financialSummaryFound ? "Found" : "NOT FOUND"}
+              </span>
+              <span className={diag.payoutEntriesCount > 0 ? "text-emerald-400" : "text-red-400"}>
+                Payout entries: {diag.payoutEntriesCount}
+              </span>
+            </div>
+            {diag.financialSummary && (
+              <div className="text-gray-400">
+                <p className="font-medium text-gray-300 mb-1">KPIs from Financial Summary:</p>
+                {Object.entries(diag.financialSummary).map(([k, v]) => (
+                  <p key={k} className="ml-2">{k}: <span className="text-white font-mono">{typeof v === "number" ? v.toFixed(2) : v}</span></p>
+                ))}
+              </div>
+            )}
+            {diag.payoutEntries.length > 0 && (
+              <div className="text-gray-400">
+                <p className="font-medium text-gray-300 mb-1">Payout entries:</p>
+                {diag.payoutEntries.map((e, i) => (
+                  <p key={i} className="ml-2">{e.platform}: <span className="text-white font-mono">{e.amount.toFixed(2)}</span></p>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
