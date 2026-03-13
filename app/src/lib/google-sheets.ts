@@ -160,6 +160,7 @@ function parseTicketRows(rows: Record<string, CellValue>[]): RawTicketRow[] {
         row: str(pick(row, "row")),
         seats: str(pick(row, "seats", "seat", "seat numbers", "seat from")),
         quantity: Math.max(1, num(pick(row, "quantity", "qty", "qty bought", "tickets"))),
+        qtyUnsold: Math.max(0, num(pick(row, "qty unsold", "unsold qty", "unsold quantity", "unsold"))),
         totalCost: num(pick(row, "total cost", "cost", "purchase price", "paid")),
         income: num(pick(row, "income", "revenue", "sale price", "proceeds")),
         profit: num(pick(row, "profit", "net profit", "gain")),

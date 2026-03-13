@@ -7,7 +7,6 @@ import { KPICard } from "@/components/dashboard/KPICard";
 import { ImportPanel } from "@/components/dashboard/ImportPanel";
 import { SyncPanel } from "@/components/dashboard/SyncPanel";
 import { PlatformChart } from "@/components/dashboard/PlatformChart";
-import { StatusPie } from "@/components/dashboard/StatusPie";
 import { EventTable } from "@/components/dashboard/EventTable";
 import { AccountTable } from "@/components/dashboard/AccountTable";
 import { UsersPanel } from "@/components/dashboard/UsersPanel";
@@ -246,31 +245,49 @@ export function DashboardClient({
                 )}
               </div>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                <h2 className="text-sm font-semibold text-white mb-4">Sales Status Breakdown</h2>
-                <StatusPie data={data.statusSummary.filter((s) => s.status !== "Unknown")} />
-                {data.statusSummary.filter((s) => s.status !== "Unknown").length > 0 ? (
-                  <table className="w-full text-xs mt-4">
-                    <thead>
-                      <tr className="border-b border-gray-800">
-                        <th className="text-left py-2 text-gray-500 font-medium">Status</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Count</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Revenue</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.statusSummary.filter((s) => s.status !== "Unknown").map((s, i) => (
-                        <tr key={i} className="border-b border-gray-800/40 last:border-0">
-                          <td className="py-2 text-gray-300 capitalize">{s.status}</td>
-                          <td className="py-2 text-right text-gray-400">{s.count}</td>
-                          <td className="py-2 text-right text-gray-300">{eur(s.revenue)}</td>
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-white">Upcoming Unsold Events</h2>
+                  {data.upcomingUnsoldEvents.length > 0 && (
+                    <span className="text-xs text-gray-500">
+                      {data.upcomingUnsoldEvents.length} row{data.upcomingUnsoldEvents.length !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+                {data.upcomingUnsoldEvents.length > 0 ? (
+                  <div className="overflow-y-auto max-h-72">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-gray-900">
+                        <tr className="border-b border-gray-800">
+                          <th className="text-left py-2 pr-3 text-gray-500 font-medium">Event</th>
+                          <th className="text-left py-2 pr-3 text-gray-500 font-medium">Venue</th>
+                          <th className="text-left py-2 pr-3 text-gray-500 font-medium">Date</th>
+                          <th className="text-right py-2 text-gray-500 font-medium">Unsold</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {data.upcomingUnsoldEvents.map((e) => (
+                          <tr key={e.id} className="border-b border-gray-800/40 last:border-0">
+                            <td className="py-2 pr-3 text-gray-200 font-medium">{e.event}</td>
+                            <td className="py-2 pr-3 text-gray-400">{e.venue ?? "—"}</td>
+                            <td className="py-2 pr-3 text-gray-400 whitespace-nowrap">
+                              {new Date(e.eventDate).toLocaleDateString("en-GB", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </td>
+                            <td className="py-2 text-right font-semibold text-amber-400">
+                              {e.qtyUnsold}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
                   <p className="text-sm text-gray-600 mt-4">
-                    No status data available — add a &quot;Status&quot; column in the Ticket Data sheet to see breakdown.
+                    No upcoming unsold events — either all events are sold out or past.
                   </p>
                 )}
               </div>

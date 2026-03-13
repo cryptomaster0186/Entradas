@@ -17,6 +17,7 @@ export interface RawTicketRow {
   row: string | null;
   seats: string | null;
   quantity: number;
+  qtyUnsold: number;
   totalCost: number;
   income: number;
   profit: number;
@@ -114,7 +115,8 @@ export function parseTicketSheet(sheet: XLSX.WorkSheet): RawTicketRow[] {
         section: str(pick(row, headers, "section", "sec")),
         row: str(pick(row, headers, "row")),
         seats: str(pick(row, headers, "seats", "seat", "seat numbers")),
-        quantity: Math.max(1, num(pick(row, headers, "quantity", "qty", "tickets"))),
+        quantity: Math.max(1, num(pick(row, headers, "quantity", "qty", "qty bought", "tickets"))),
+        qtyUnsold: Math.max(0, num(pick(row, headers, "qty unsold", "unsold qty", "unsold quantity", "unsold"))),
         totalCost: num(pick(row, headers, "total cost", "cost", "purchase price", "paid")),
         income: num(pick(row, headers, "income", "revenue", "sale price", "proceeds")),
         profit: num(pick(row, headers, "profit", "net profit", "gain")),

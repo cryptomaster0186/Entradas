@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "TicketData" ADD COLUMN "qtyUnsold" INTEGER NOT NULL DEFAULT 0;

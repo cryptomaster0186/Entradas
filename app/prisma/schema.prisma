@@ -40,6 +40,7 @@ model TicketData {
   row         String?
   seats       String?
   quantity    Int        @default(1)
+  qtyUnsold   Int        @default(0) // "Qty Unsold" column from Ticket Data sheet
 
   // Financial columns
   totalCost   Float      @default(0) // "Total Cost" — purchase spend

@@ -52,6 +52,14 @@ export interface AccountPerformance {
   profit: number;
 }
 
+export interface UpcomingUnsoldEvent {
+  id: string;
+  event: string;
+  venue: string | null;
+  eventDate: string; // ISO string (serialisable for client)
+  qtyUnsold: number;
+}
+
 export interface DashboardData {
   kpis: KPISummary;
   awaitingPayoutByPlatform: AwaitingPayout[];
@@ -61,6 +69,7 @@ export interface DashboardData {
   bestEvents: EventPerformance[];
   worstEvents: EventPerformance[];
   accountPerformance: AccountPerformance[];
+  upcomingUnsoldEvents: UpcomingUnsoldEvent[];
   lastImport: { filename: string; uploadedAt: string } | null;
   kpisFromSheet: boolean; // true when KPIs come from Financial Summary snapshot
 }
@@ -75,6 +84,8 @@ function round2(n: number) {
 
 export async function getDashboardData(): Promise<DashboardData> {
   // Run all aggregations in parallel
+  const now = new Date();
+
   const [
     ticketAgg,
     expenseAgg,
@@ -84,6 +95,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     eventRows,
     accountRows,
     lastImport,
+    unsoldEventRows,
   ] = await Promise.all([
     // KPI aggregations from Ticket Data (used as fallback)
     prisma.ticketData.aggregate({
@@ -137,6 +149,17 @@ export async function getDashboardData(): Promise<DashboardData> {
     // Most recent import
     prisma.importBatch.findFirst({
       orderBy: { uploadedAt: "desc" },
+    }),
+
+    // Upcoming unsold events: qtyUnsold > 0, future eventDate, event name present
+    prisma.ticketData.findMany({
+      where: {
+        qtyUnsold: { gt: 0 },
+        eventDate: { gte: now },
+        event: { not: "" },
+      },
+      orderBy: { eventDate: "asc" },
+      select: { id: true, event: true, venue: true, eventDate: true, qtyUnsold: true },
     }),
   ]);
 
@@ -231,6 +254,16 @@ export async function getDashboardData(): Promise<DashboardData> {
       profit: round2(r._sum.profit ?? 0),
     }));
 
+  const upcomingUnsoldEvents: UpcomingUnsoldEvent[] = unsoldEventRows
+    .filter((r) => r.eventDate !== null)
+    .map((r) => ({
+      id: r.id,
+      event: r.event,
+      venue: r.venue ?? null,
+      eventDate: r.eventDate!.toISOString(),
+      qtyUnsold: r.qtyUnsold,
+    }));
+
   return {
     kpis,
     kpisFromSheet,
@@ -241,6 +274,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     bestEvents,
     worstEvents,
     accountPerformance,
+    upcomingUnsoldEvents,
     lastImport: lastImport
       ? { filename: lastImport.filename, uploadedAt: lastImport.uploadedAt.toISOString() }
       : null,
