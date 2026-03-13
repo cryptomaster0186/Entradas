@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect, notFound } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { parseStatsCsv } from "@/lib/stats-csv";
+import { parseStatsCsv } from "@/lib/stats-csv.server";
 import { AccountDetailClient } from "./AccountDetailClient";
 
 export const dynamic = "force-dynamic";
