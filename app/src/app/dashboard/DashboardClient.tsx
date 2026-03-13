@@ -164,18 +164,6 @@ export function DashboardClient({
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-xl font-bold text-white">Financial Summary</h1>
-                {lastSync?.status === "COMPLETED" && (
-                  <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                    Synced from Google Sheets &middot;{" "}
-                    {new Date(lastSync.startedAt).toLocaleString()}
-                  </p>
-                )}
-                {!lastSync && isAdmin && (
-                  <p className="text-xs text-yellow-500 mt-0.5">
-                    No sync yet — go to the Sync tab to pull data from Google Sheets.
-                  </p>
-                )}
               </div>
               <button
                 onClick={refreshData}
@@ -194,20 +182,14 @@ export function DashboardClient({
 
             {/* KPI Grid */}
             <section>
-              {data.kpisFromSheet && (
-                <p className="text-xs text-emerald-500 mb-2 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                  KPIs sourced directly from Financial Summary sheet
-                </p>
-              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-                <KPICard title="Total Spend"      value={eur(kpis.totalSpend)}          subtitle="Purchase costs"         color="orange" />
-                <KPICard title="Revenue"          value={eur(kpis.revenue)}             subtitle="Ticket income"          color="blue" />
-                <KPICard title="Profit on Sales"  value={eur(kpis.profitOnSales)}       subtitle="Revenue − spend"        color={kpis.profitOnSales >= 0 ? "green" : "red"} />
-                <KPICard title="Extra Expenses"   value={eur(kpis.extraExpenses)}       subtitle="Non-ticket costs"       color="purple" />
-                <KPICard title="Total Expenses"   value={eur(kpis.totalExpenses)}       subtitle="Spend + extras"         color="default" />
-                <KPICard title="Net Income"       value={eur(kpis.netIncome)}           subtitle="Revenue − all exp."     color={kpis.netIncome >= 0 ? "green" : "red"} />
-                <KPICard title="Unsold Inventory" value={eur(kpis.unsoldInventoryCost)} subtitle="Cost of unsold tickets" color="default" />
+                <KPICard title="Total Spend"      value={eur(kpis.totalSpend)}          color="orange" />
+                <KPICard title="Revenue"          value={eur(kpis.revenue)}             color="blue" />
+                <KPICard title="Profit on Sales"  value={eur(kpis.profitOnSales)}       color={kpis.profitOnSales >= 0 ? "green" : "red"} />
+                <KPICard title="Extra Expenses"   value={eur(kpis.extraExpenses)}       color="purple" />
+                <KPICard title="Total Expenses"   value={eur(kpis.totalExpenses)}       color="default" />
+                <KPICard title="Net Income"       value={eur(kpis.netIncome)}           color={kpis.netIncome >= 0 ? "green" : "red"} />
+                <KPICard title="Unsold Inventory" value={eur(kpis.unsoldInventoryCost)} color="default" />
               </div>
             </section>
 
@@ -248,11 +230,6 @@ export function DashboardClient({
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-sm font-semibold text-white">Upcoming Unsold Events</h2>
-                  {data.upcomingUnsoldEvents.length > 0 && (
-                    <span className="text-xs text-gray-500">
-                      {data.upcomingUnsoldEvents.length} row{data.upcomingUnsoldEvents.length !== 1 ? "s" : ""}
-                    </span>
-                  )}
                 </div>
                 {data.upcomingUnsoldEvents.length > 0 ? (
                   <div className="overflow-y-auto max-h-[480px] pr-1">
