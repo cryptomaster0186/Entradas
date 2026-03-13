@@ -50,6 +50,7 @@ model TicketData {
   platform    String?
   account     String?
   status      String?    // Sold | Listed | Pending | Cancelled
+  paidOut     Boolean    @default(false)
 
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt

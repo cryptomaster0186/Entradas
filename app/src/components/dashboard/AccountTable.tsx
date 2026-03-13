@@ -5,8 +5,8 @@ interface AccountPerformance {
   profit: number;
 }
 
-function usd(n: number) {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function eur(n: number) {
+  return `€${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function AccountTable({ data }: { data: AccountPerformance[] }) {
@@ -34,13 +34,13 @@ export function AccountTable({ data }: { data: AccountPerformance[] }) {
             <tr key={i} className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 transition-colors">
               <td className="px-5 py-3 text-gray-200">{a.account}</td>
               <td className="px-5 py-3 text-right text-gray-400">{a.count}</td>
-              <td className="px-5 py-3 text-right text-gray-300">{usd(a.revenue)}</td>
+              <td className="px-5 py-3 text-right text-gray-300">{eur(a.revenue)}</td>
               <td
                 className={`px-5 py-3 text-right font-semibold ${
                   a.profit >= 0 ? "text-emerald-400" : "text-red-400"
                 }`}
               >
-                {usd(a.profit)}
+                {eur(a.profit)}
               </td>
             </tr>
           ))}

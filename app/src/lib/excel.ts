@@ -23,6 +23,7 @@ export interface RawTicketRow {
   platform: string | null;
   account: string | null;
   status: string | null;
+  paidOut: boolean;
 }
 
 export interface RawExpenseRow {
@@ -117,9 +118,10 @@ export function parseTicketSheet(sheet: XLSX.WorkSheet): RawTicketRow[] {
         totalCost: num(pick(row, headers, "total cost", "cost", "purchase price", "paid")),
         income: num(pick(row, headers, "income", "revenue", "sale price", "proceeds")),
         profit: num(pick(row, headers, "profit", "net profit", "gain")),
-        platform: str(pick(row, headers, "platform", "marketplace", "site")),
+        platform: str(pick(row, headers, "sold/listed", "platform", "marketplace", "site")),
         account: str(pick(row, headers, "account", "seller account", "account name")),
         status: str(pick(row, headers, "status", "sale status", "listing status")),
+        paidOut: /^y(es)?$/i.test(String(pick(row, headers, "paid out", "paidout", "paid") ?? "").trim()),
       } satisfies RawTicketRow;
     })
     .filter((r): r is RawTicketRow => r !== null);

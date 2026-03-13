@@ -25,6 +25,7 @@ export const SHEET_ID =
   process.env.GOOGLE_SHEET_ID ?? "1UxP652ru_KktFQQ08RKcEQOcIj-ybJZA";
 
 export const SHEET_ID_2 = process.env.GOOGLE_SHEET_ID_2 ?? "";
+export const SHEET_ID_3 = process.env.GOOGLE_SHEET_ID_3 ?? "";
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -162,9 +163,11 @@ function parseTicketRows(rows: Record<string, CellValue>[]): RawTicketRow[] {
         totalCost: num(pick(row, "total cost", "cost", "purchase price", "paid")),
         income: num(pick(row, "income", "revenue", "sale price", "proceeds")),
         profit: num(pick(row, "profit", "net profit", "gain")),
-        platform: str(pick(row, "platform", "marketplace", "site", "purchased at", "sold/listed")),
+        // "Sold/Listed" = selling platform (Viagogo, Stubhub) — the one that pays out
+        platform: str(pick(row, "sold/listed", "platform", "marketplace", "site")),
         account: str(pick(row, "account", "seller account", "account name")),
-        status: str(pick(row, "status", "sale status", "listing status", "paid out", "all delivered")),
+        status: str(pick(row, "status", "sale status", "listing status")),
+        paidOut: /^y(es)?$/i.test(String(pick(row, "paid out", "paidout", "paid") ?? "").trim()),
       } satisfies RawTicketRow;
     })
     .filter((r): r is RawTicketRow => r !== null);
@@ -268,7 +271,7 @@ export async function fetchSheetData(): Promise<SheetsData> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
 
-  const sheetIds = [SHEET_ID, SHEET_ID_2].filter(Boolean);
+  const sheetIds = [SHEET_ID, SHEET_ID_2, SHEET_ID_3].filter(Boolean);
   console.log(`[sync] Fetching from ${sheetIds.length} sheet(s):`, sheetIds);
 
   const results = await Promise.all(

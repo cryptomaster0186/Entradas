@@ -41,8 +41,8 @@ interface Props {
   userRole: "ADMIN" | "VIEWER";
 }
 
-function usd(n: number) {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function eur(n: number) {
+  return `€${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 type Tab = "dashboard" | "sync" | "import" | "users";
@@ -196,38 +196,43 @@ export function DashboardClient({
             {/* KPI Grid */}
             <section>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <KPICard title="Total Spend"     value={usd(kpis.totalSpend)}     subtitle="Purchase costs"      color="orange" />
-                <KPICard title="Revenue"          value={usd(kpis.revenue)}         subtitle="Ticket income"       color="blue" />
-                <KPICard title="Profit on Sales"  value={usd(kpis.profitOnSales)}   subtitle="Revenue − spend"     color={kpis.profitOnSales >= 0 ? "green" : "red"} />
-                <KPICard title="Extra Expenses"   value={usd(kpis.extraExpenses)}   subtitle="Non-ticket costs"    color="purple" />
-                <KPICard title="Total Expenses"   value={usd(kpis.totalExpenses)}   subtitle="Spend + extras"      color="default" />
-                <KPICard title="Net Income"       value={usd(kpis.netIncome)}       subtitle="Revenue − all exp."  color={kpis.netIncome >= 0 ? "green" : "red"} />
+                <KPICard title="Total Spend"     value={eur(kpis.totalSpend)}     subtitle="Purchase costs"      color="orange" />
+                <KPICard title="Revenue"          value={eur(kpis.revenue)}         subtitle="Ticket income"       color="blue" />
+                <KPICard title="Profit on Sales"  value={eur(kpis.profitOnSales)}   subtitle="Revenue − spend"     color={kpis.profitOnSales >= 0 ? "green" : "red"} />
+                <KPICard title="Extra Expenses"   value={eur(kpis.extraExpenses)}   subtitle="Non-ticket costs"    color="purple" />
+                <KPICard title="Total Expenses"   value={eur(kpis.totalExpenses)}   subtitle="Spend + extras"      color="default" />
+                <KPICard title="Net Income"       value={eur(kpis.netIncome)}       subtitle="Revenue − all exp."  color={kpis.netIncome >= 0 ? "green" : "red"} />
               </div>
             </section>
 
             {/* Charts row */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                <h2 className="text-sm font-semibold text-white mb-4">Revenue by Platform</h2>
-                <PlatformChart data={data.platformBreakdown} />
-                {data.platformBreakdown.length > 0 && (
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-white">Awaiting Payout</h2>
+                  {data.totalAwaitingPayout > 0 && (
+                    <span className="text-sm font-bold text-amber-400">
+                      {eur(data.totalAwaitingPayout)} total
+                    </span>
+                  )}
+                </div>
+                <PlatformChart data={data.awaitingPayoutByPlatform} />
+                {data.awaitingPayoutByPlatform.length > 0 && (
                   <table className="w-full text-xs mt-4">
                     <thead>
                       <tr className="border-b border-gray-800">
                         <th className="text-left py-2 text-gray-500 font-medium">Platform</th>
                         <th className="text-right py-2 text-gray-500 font-medium">Tickets</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Revenue</th>
-                        <th className="text-right py-2 text-gray-500 font-medium">Profit</th>
+                        <th className="text-right py-2 text-gray-500 font-medium">Awaiting</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.platformBreakdown.map((p, i) => (
+                      {data.awaitingPayoutByPlatform.map((p, i) => (
                         <tr key={i} className="border-b border-gray-800/40 last:border-0">
                           <td className="py-2 text-gray-300">{p.platform}</td>
                           <td className="py-2 text-right text-gray-400">{p.count}</td>
-                          <td className="py-2 text-right text-gray-300">${p.revenue.toLocaleString()}</td>
-                          <td className={`py-2 text-right font-semibold ${p.profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                            ${p.profit.toLocaleString()}
+                          <td className="py-2 text-right font-semibold text-amber-400">
+                            {eur(p.amount)}
                           </td>
                         </tr>
                       ))}
@@ -253,7 +258,7 @@ export function DashboardClient({
                         <tr key={i} className="border-b border-gray-800/40 last:border-0">
                           <td className="py-2 text-gray-300 capitalize">{s.status}</td>
                           <td className="py-2 text-right text-gray-400">{s.count}</td>
-                          <td className="py-2 text-right text-gray-300">${s.revenue.toLocaleString()}</td>
+                          <td className="py-2 text-right text-gray-300">{eur(s.revenue)}</td>
                         </tr>
                       ))}
                     </tbody>

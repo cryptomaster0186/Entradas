@@ -21,6 +21,12 @@ export interface PlatformBreakdown {
   profit: number;
 }
 
+export interface AwaitingPayout {
+  platform: string;
+  count: number;
+  amount: number;
+}
+
 export interface StatusSummary {
   status: string;
   count: number;
@@ -45,6 +51,8 @@ export interface AccountPerformance {
 
 export interface DashboardData {
   kpis: KPISummary;
+  awaitingPayoutByPlatform: AwaitingPayout[];
+  totalAwaitingPayout: number;
   platformBreakdown: PlatformBreakdown[];
   statusSummary: StatusSummary[];
   bestEvents: EventPerformance[];
@@ -66,6 +74,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const [
     ticketAgg,
     expenseAgg,
+    awaitingPayoutRows,
     platformRows,
     statusRows,
     eventRows,
@@ -80,6 +89,15 @@ export async function getDashboardData(): Promise<DashboardData> {
     // Extra expenses aggregation
     prisma.expense.aggregate({
       _sum: { amount: true },
+    }),
+
+    // Awaiting payout: sold tickets where paidOut = false, grouped by selling platform
+    prisma.ticketData.groupBy({
+      by: ["platform"],
+      where: { paidOut: false, income: { gt: 0 } },
+      _count: { id: true },
+      _sum: { income: true },
+      orderBy: { _sum: { income: "desc" } },
     }),
 
     // Platform breakdown (only rows with a platform)
@@ -127,6 +145,13 @@ export async function getDashboardData(): Promise<DashboardData> {
   const totalExpenses = round2(totalSpend + extraExpenses);
   const netIncome = round2(revenue - totalExpenses);
 
+  const awaitingPayoutByPlatform: AwaitingPayout[] = awaitingPayoutRows.map((r) => ({
+    platform: r.platform ?? "Unknown",
+    count: r._count.id,
+    amount: round2(r._sum.income ?? 0),
+  }));
+  const totalAwaitingPayout = round2(awaitingPayoutByPlatform.reduce((s, r) => s + r.amount, 0));
+
   const platformBreakdown: PlatformBreakdown[] = platformRows.map((r) => ({
     platform: r.platform ?? "Unknown",
     count: r._count.id,
@@ -163,6 +188,8 @@ export async function getDashboardData(): Promise<DashboardData> {
 
   return {
     kpis: { totalSpend, revenue, profitOnSales, extraExpenses, totalExpenses, netIncome },
+    awaitingPayoutByPlatform,
+    totalAwaitingPayout,
     platformBreakdown,
     statusSummary,
     bestEvents,

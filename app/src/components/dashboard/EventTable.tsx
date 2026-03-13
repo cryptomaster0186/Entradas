@@ -6,8 +6,8 @@ interface EventPerformance {
   count: number;
 }
 
-function usd(n: number) {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function eur(n: number) {
+  return `€${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function EventTable({
@@ -41,14 +41,14 @@ export function EventTable({
           {events.map((e, i) => (
             <tr key={i} className="border-b border-gray-800/50 last:border-0 hover:bg-gray-800/30 transition-colors">
               <td className="px-5 py-3 text-gray-200 max-w-[180px] truncate">{e.event}</td>
-              <td className="px-5 py-3 text-right text-gray-400">{usd(e.totalCost)}</td>
-              <td className="px-5 py-3 text-right text-gray-300">{usd(e.revenue)}</td>
+              <td className="px-5 py-3 text-right text-gray-400">{eur(e.totalCost)}</td>
+              <td className="px-5 py-3 text-right text-gray-300">{eur(e.revenue)}</td>
               <td
                 className={`px-5 py-3 text-right font-semibold ${
                   highlight === "green" ? "text-emerald-400" : "text-red-400"
                 }`}
               >
-                {usd(e.profit)}
+                {eur(e.profit)}
               </td>
             </tr>
           ))}
