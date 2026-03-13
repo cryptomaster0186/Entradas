@@ -201,16 +201,14 @@ export function DashboardClient({
                   KPIs sourced directly from Financial Summary sheet
                 </p>
               )}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2">
-                <KPICard title="Total Spend"       value={eur(kpis.totalSpend)}                    subtitle="Purchase costs"         color="orange" />
-                <KPICard title="Revenue"           value={eur(kpis.revenue)}                       subtitle="Ticket income"          color="blue" />
-                <KPICard title="Profit on Sales"   value={eur(kpis.profitOnSales)}                 subtitle="Revenue − spend"        color={kpis.profitOnSales >= 0 ? "green" : "red"} />
-                <KPICard title="Extra Expenses"    value={eur(kpis.extraExpenses)}                 subtitle="Non-ticket costs"       color="purple" />
-                <KPICard title="Total Expenses"    value={eur(kpis.totalExpenses)}                 subtitle="Spend + extras"         color="default" />
-                <KPICard title="Net Income"        value={eur(kpis.netIncome)}                     subtitle="Revenue − all exp."     color={kpis.netIncome >= 0 ? "green" : "red"} />
-                <KPICard title="Unsold Inventory"  value={eur(kpis.unsoldInventoryCost)}           subtitle="Cost of unsold tickets" color="default" />
-                <KPICard title="StubHub.com"       value={eur(data.stubhubComAwaitingPayout)}      subtitle="Awaiting payout"        color="orange" />
-                <KPICard title="StubHub.ie"        value={eur(data.stubhubIeAwaitingPayout)}       subtitle="Awaiting payout"        color="orange" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+                <KPICard title="Total Spend"      value={eur(kpis.totalSpend)}          subtitle="Purchase costs"         color="orange" />
+                <KPICard title="Revenue"          value={eur(kpis.revenue)}             subtitle="Ticket income"          color="blue" />
+                <KPICard title="Profit on Sales"  value={eur(kpis.profitOnSales)}       subtitle="Revenue − spend"        color={kpis.profitOnSales >= 0 ? "green" : "red"} />
+                <KPICard title="Extra Expenses"   value={eur(kpis.extraExpenses)}       subtitle="Non-ticket costs"       color="purple" />
+                <KPICard title="Total Expenses"   value={eur(kpis.totalExpenses)}       subtitle="Spend + extras"         color="default" />
+                <KPICard title="Net Income"       value={eur(kpis.netIncome)}           subtitle="Revenue − all exp."     color={kpis.netIncome >= 0 ? "green" : "red"} />
+                <KPICard title="Unsold Inventory" value={eur(kpis.unsoldInventoryCost)} subtitle="Cost of unsold tickets" color="default" />
               </div>
             </section>
 
