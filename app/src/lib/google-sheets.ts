@@ -142,11 +142,26 @@ async function fetchFromSheet(
   sheets: ReturnType<typeof google.sheets>,
   spreadsheetId: string
 ): Promise<SheetsData> {
-  const safeGet = async (range: string) => {
+  // Get actual tab names from the spreadsheet
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const tabNames = (meta.data.sheets ?? [])
+    .map((s) => s.properties?.title ?? "")
+    .filter(Boolean);
+
+  const findTab = (keywords: string[]) =>
+    tabNames.find((t) =>
+      keywords.some((kw) => t.toLowerCase().includes(kw.toLowerCase()))
+    );
+
+  const ticketTab = findTab(["ticket"]);
+  const expenseTab = findTab(["expense"]);
+
+  const getTab = async (tabName: string | undefined) => {
+    if (!tabName) return [] as string[][];
     try {
       const res = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `'${range}'`,
+        range: `'${tabName}'`,
         valueRenderOption: "FORMATTED_VALUE",
         dateTimeRenderOption: "FORMATTED_STRING",
       });
@@ -156,17 +171,9 @@ async function fetchFromSheet(
     }
   };
 
-  const getFirstMatch = async (variants: string[]) => {
-    for (const name of variants) {
-      const values = await safeGet(name);
-      if (values.length > 0) return values;
-    }
-    return [] as string[][];
-  };
-
   const [ticketValues, expenseValues] = await Promise.all([
-    getFirstMatch(TICKET_TAB_VARIANTS),
-    getFirstMatch(EXPENSE_TAB_VARIANTS),
+    getTab(ticketTab),
+    getTab(expenseTab),
   ]);
 
   return {
