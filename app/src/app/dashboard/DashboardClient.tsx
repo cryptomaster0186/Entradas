@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { signOut } from "next-auth/react";
+import Link from "next/link";
 import type { DashboardData } from "@/lib/dashboard";
 import { KPICard } from "@/components/dashboard/KPICard";
 import { ImportPanel } from "@/components/dashboard/ImportPanel";
@@ -114,6 +115,12 @@ export function DashboardClient({
                 {TAB_LABELS[tab]}
               </button>
             ))}
+            <Link
+              href="/account-tracker"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            >
+              Account Tracker
+            </Link>
           </nav>
 
           <div className="flex items-center gap-3">

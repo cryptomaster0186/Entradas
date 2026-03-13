@@ -116,3 +116,13 @@ enum SyncStatus {
   COMPLETED
   FAILED
 }
+
+// Maps a Ticketmaster event URL to a human-readable event name
+model StatsEventName {
+  id        String   @id @default(cuid())
+  eventUrl  String   @unique
+  eventName String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
