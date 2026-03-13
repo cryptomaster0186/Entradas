@@ -56,6 +56,7 @@ export interface DashboardData {
   kpis: KPISummary;
   awaitingPayoutByPlatform: AwaitingPayout[];
   totalAwaitingPayout: number;
+  stubhubAwaitingPayout: number; // StubHub.com awaiting payout (separate figure)
   platformBreakdown: PlatformBreakdown[];
   statusSummary: StatusSummary[];
   bestEvents: EventPerformance[];
@@ -196,6 +197,11 @@ export async function getDashboardData(): Promise<DashboardData> {
     awaitingPayoutByPlatform = [];
   }
   const totalAwaitingPayout = round2(awaitingPayoutByPlatform.reduce((s, r) => s + r.amount, 0));
+  const stubhubAwaitingPayout = round2(
+    awaitingPayoutByPlatform
+      .filter((p) => p.platform.toLowerCase().includes("stubhub"))
+      .reduce((s, r) => s + r.amount, 0)
+  );
 
   const platformBreakdown: PlatformBreakdown[] = platformRows.map((r) => ({
     platform: r.platform ?? "Unknown",
@@ -236,6 +242,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     kpisFromSheet,
     awaitingPayoutByPlatform,
     totalAwaitingPayout,
+    stubhubAwaitingPayout,
     platformBreakdown,
     statusSummary,
     bestEvents,

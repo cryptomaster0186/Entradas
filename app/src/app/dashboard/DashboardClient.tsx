@@ -223,6 +223,16 @@ export function DashboardClient({
                     </span>
                   )}
                 </div>
+                {/* StubHub separate callout */}
+                {data.stubhubAwaitingPayout > 0 && (
+                  <div className="flex items-center justify-between bg-orange-500/10 border border-orange-500/30 rounded-xl px-4 py-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />
+                      <span className="text-sm font-medium text-orange-300">StubHub.com</span>
+                    </div>
+                    <span className="text-sm font-bold text-orange-400">{eur(data.stubhubAwaitingPayout)}</span>
+                  </div>
+                )}
                 <PlatformChart data={data.awaitingPayoutByPlatform} />
                 {data.awaitingPayoutByPlatform.length > 0 && (
                   <table className="w-full text-xs mt-4">
