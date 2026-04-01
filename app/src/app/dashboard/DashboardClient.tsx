@@ -11,6 +11,8 @@ import { PlatformChart } from "@/components/dashboard/PlatformChart";
 import { EventTable } from "@/components/dashboard/EventTable";
 import { AccountTable } from "@/components/dashboard/AccountTable";
 import { UsersPanel } from "@/components/dashboard/UsersPanel";
+import { PurchasesPanel } from "@/components/dashboard/PurchasesPanel";
+import { EmailAccountsPanel } from "@/components/dashboard/EmailAccountsPanel";
 
 interface Batch {
   id: string;
@@ -45,13 +47,15 @@ function eur(n: number) {
   return `€${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-type Tab = "dashboard" | "sync" | "import" | "users";
+type Tab = "dashboard" | "purchases" | "email-accounts" | "sync" | "import" | "users";
 
 const TAB_LABELS: Record<Tab, string> = {
-  dashboard: "Dashboard",
-  sync: "Sync",
-  import: "Manual Import",
-  users: "Users",
+  dashboard:       "Dashboard",
+  purchases:       "Purchases",
+  "email-accounts": "Email Accounts",
+  sync:            "Sync",
+  import:          "Manual Import",
+  users:           "Users",
 };
 
 export function DashboardClient({
@@ -70,8 +74,8 @@ export function DashboardClient({
 
   // Tabs visible to this user
   const visibleTabs: Tab[] = isAdmin
-    ? ["dashboard", "sync", "import", "users"]
-    : ["dashboard"];
+    ? ["dashboard", "purchases", "email-accounts", "sync", "import", "users"]
+    : ["dashboard", "purchases"];
 
   const refreshData = useCallback(async () => {
     setRefreshing(true);
@@ -142,6 +146,16 @@ export function DashboardClient({
 
       {/* Main */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        {/* ── Purchases tab ── */}
+        {activeTab === "purchases" && (
+          <PurchasesPanel />
+        )}
+
+        {/* ── Email Accounts tab ── */}
+        {activeTab === "email-accounts" && isAdmin && (
+          <EmailAccountsPanel />
+        )}
 
         {/* ── Sync tab ── */}
         {activeTab === "sync" && isAdmin && (

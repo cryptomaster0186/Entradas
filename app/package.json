@@ -33,7 +33,9 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.8.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "imapflow": "^1.0.162",
+    "mailparser": "^3.7.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -44,6 +46,7 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@types/mailparser": "^3.4.4"
   }
 }

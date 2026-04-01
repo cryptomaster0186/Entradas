@@ -126,3 +126,94 @@ model StatsEventName {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ─── Purchases (tickets bought by the reseller) ───────────────────────────────
+
+enum PurchaseStatus {
+  CONFIRMED
+  PENDING
+  CANCELLED
+  REFUNDED
+}
+
+enum PurchaseSource {
+  MANUAL
+  EMAIL
+}
+
+enum FetchStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// Stores IMAP credentials for each email account used to buy tickets
+model EmailAccount {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  label       String   // friendly name, e.g. "Main iCloud"
+  email       String   @unique
+  password    String   // AES-256-GCM encrypted — never stored in plain text
+  imapHost    String
+  imapPort    Int      @default(993)
+  tls         Boolean  @default(true)
+
+  lastFetched DateTime?
+
+  purchases Purchase[]
+  fetchLogs EmailFetchLog[]
+}
+
+// Log of every IMAP fetch run
+model EmailFetchLog {
+  id             String      @id @default(cuid())
+  startedAt      DateTime    @default(now())
+  completedAt    DateTime?
+  status         FetchStatus @default(RUNNING)
+  emailAccountId String
+  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  emailsScanned  Int         @default(0)
+  purchasesAdded Int         @default(0)
+  error          String?
+}
+
+// One record per ticket purchase extracted from a confirmation email (or added manually)
+model Purchase {
+  id          String         @id @default(cuid())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Event details
+  eventName   String
+  eventDate   DateTime?
+  venue       String?
+
+  // Ticket details
+  section     String?
+  row         String?
+  seats       String?
+  quantity    Int            @default(1)
+
+  // Order details
+  orderNumber String?
+  platform    String         // e.g. "ticketmaster.co.uk"
+  account     String         // email address used for the purchase
+  pricePaid   Float          @default(0)
+  currency    String         @default("GBP")
+
+  status      PurchaseStatus @default(CONFIRMED)
+  source      PurchaseSource @default(MANUAL)
+
+  // Deduplication key: "<email-account-email>:<imap-uid>"
+  rawEmailId  String?        @unique
+
+  emailAccountId String?
+  emailAccount   EmailAccount? @relation(fields: [emailAccountId], references: [id], onDelete: SetNull)
+
+  @@index([platform])
+  @@index([account])
+  @@index([status])
+  @@index([eventDate])
+}
