@@ -120,6 +120,12 @@ export function DashboardClient({
               </button>
             ))}
             <Link
+              href="/purchases"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            >
+              Purchases
+            </Link>
+            <Link
               href="/account-tracker"
               className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
             >

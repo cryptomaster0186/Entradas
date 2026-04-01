@@ -10,6 +10,7 @@ import { simpleParser } from "mailparser";
 import { decrypt } from "./crypto";
 import prisma from "./prisma";
 import { parseConfirmationEmail } from "./email-parsers";
+import { fingerprintEmail } from "./fingerprint";
 
 interface EmailAccountRecord {
   id: string;
@@ -113,20 +114,22 @@ export async function fetchEmailsForAccount(
       emailsScanned++;
 
       // Deduplication: skip if we already processed this UID for this account
-      const dedupeKey = `${account.email}:${uid}`;
+      const rawEmailId = `${account.email}:${uid}`;
       const existing = await prisma.purchase.findUnique({
-        where: { rawEmailId: dedupeKey },
+        where: { rawEmailId },
       });
       if (existing) continue;
 
       // Fetch raw message source
       let rawSource: Buffer | undefined;
+      let imapMessageId: string | undefined;
       for await (const msg of client.fetch(
         String(uid),
-        { source: true },
+        { source: true, envelope: true },
         { uid: true }
       )) {
         rawSource = msg.source as Buffer | undefined;
+        imapMessageId = msg.envelope?.messageId ?? undefined;
       }
 
       if (rawSource === undefined) continue;
@@ -144,6 +147,7 @@ export async function fetchEmailsForAccount(
       const subject = parsed.subject ?? "";
       const text = parsed.text ?? "";
       const html = parsed.html || null;
+      const receivedAt = parsed.date ?? null;
 
       // Skip non-confirmation emails early
       const lowerSubject = subject.toLowerCase();
@@ -155,25 +159,62 @@ export async function fetchEmailsForAccount(
       const purchaseData = parseConfirmationEmail(text, html, fromAddr, subject);
       if (!purchaseData) continue;
 
+      const fingerprint = fingerprintEmail(rawEmailId);
+
+      // Derive provider from platform domain
+      const provider = purchaseData.platform
+        ? purchaseData.platform.replace(/^www\./, "").split(".")[0]
+        : null;
+
       // Persist to DB
       try {
         await prisma.purchase.create({
           data: {
+            // Source
+            source:        "EMAIL",
+            provider,
+
+            // Event
             eventName:     purchaseData.eventName,
             eventDate:     purchaseData.eventDate,
             venue:         purchaseData.venue,
+
+            // Purchase info
+            purchaseDate:  purchaseData.purchaseDate,
+            account:       account.email,
+            ticketType:    null,
+
+            // Seats
+            quantity:      purchaseData.quantity,
             section:       purchaseData.section,
             row:           purchaseData.row,
-            seats:         purchaseData.seats,
-            quantity:      purchaseData.quantity,
+            seat:          purchaseData.seat,
+
+            // Financials
+            pricePaid:     purchaseData.pricePaid,
+            costPerTicket: purchaseData.costPerTicket,
+            currency:      purchaseData.currency,
+
+            // Status & dedup
+            status:        "CONFIRMED",
+            parseStatus:   purchaseData.parseStatus,
+            parseError:    purchaseData.parseWarnings.length > 0
+              ? purchaseData.parseWarnings.join("; ")
+              : null,
+            fingerprint,
+
+            // Order reference
             orderNumber:   purchaseData.orderNumber,
             platform:      purchaseData.platform,
-            account:       account.email,
-            pricePaid:     purchaseData.pricePaid,
-            currency:      purchaseData.currency,
-            status:        "CONFIRMED",
-            source:        "EMAIL",
-            rawEmailId:    dedupeKey,
+
+            // Email metadata
+            rawEmailId,
+            emailMessageId: imapMessageId ?? (parsed.messageId ?? null),
+            emailSubject:  subject || null,
+            emailSender:   fromAddr || null,
+            emailReceivedAt: receivedAt,
+
+            // Relations
             emailAccountId: account.id,
           },
         });

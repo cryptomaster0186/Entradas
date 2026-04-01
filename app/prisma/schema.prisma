@@ -27,7 +27,7 @@ enum DataSource {
   MANUAL
 }
 
-// Represents a row from the "Ticket Data" sheet
+// Represents a row from the "Ticket Data" sheet (financial/sales view — Google Sheets)
 model TicketData {
   id          String     @id @default(cuid())
   importBatch String
@@ -40,17 +40,15 @@ model TicketData {
   row         String?
   seats       String?
   quantity    Int        @default(1)
-  qtyUnsold   Int        @default(0) // "Qty Unsold" column from Ticket Data sheet
+  qtyUnsold   Int        @default(0)
 
-  // Financial columns
-  totalCost   Float      @default(0) // "Total Cost" — purchase spend
-  income      Float      @default(0) // "Income"     — sale revenue
-  profit      Float      @default(0) // "Profit"     — income minus cost
+  totalCost   Float      @default(0)
+  income      Float      @default(0)
+  profit      Float      @default(0)
 
-  // Platform / account info
   platform    String?
   account     String?
-  status      String?    // Sold | Listed | Pending | Cancelled
+  status      String?
   paidOut     Boolean    @default(false)
 
   createdAt   DateTime   @default(now())
@@ -72,7 +70,7 @@ model Expense {
   date        DateTime?
   description String?
   category    String?
-  amount      Float      @default(0) // "Amount"
+  amount      Float      @default(0)
 
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -81,7 +79,7 @@ model Expense {
   @@index([source])
 }
 
-// Tracks every manual Excel upload
+// Tracks every manual Excel upload (financial/sales sheet)
 model ImportBatch {
   id           String       @id @default(cuid())
   filename     String
@@ -99,16 +97,16 @@ enum ImportStatus {
 
 // Tracks every Google Sheets sync
 model SyncLog {
-  id           String     @id @default(cuid())
-  startedAt    DateTime   @default(now())
-  completedAt  DateTime?
-  status       SyncStatus @default(RUNNING)
-  rowsTickets  Int        @default(0)
-  rowsExpenses Int        @default(0)
-  triggeredBy      String     @default("manual") // "manual" | "cron"
+  id               String     @id @default(cuid())
+  startedAt        DateTime   @default(now())
+  completedAt      DateTime?
+  status           SyncStatus @default(RUNNING)
+  rowsTickets      Int        @default(0)
+  rowsExpenses     Int        @default(0)
+  triggeredBy      String     @default("manual")
   error            String?
-  payoutSnapshot   String?    // JSON: PayoutEntry[] read from Financial Summary sheet
-  summarySnapshot  String?    // JSON: FinancialSummaryKPIs read from Financial Summary sheet
+  payoutSnapshot   String?
+  summarySnapshot  String?
 }
 
 enum SyncStatus {
@@ -127,7 +125,7 @@ model StatsEventName {
   updatedAt DateTime @updatedAt
 }
 
-// ─── Purchases (tickets bought by the reseller) ───────────────────────────────
+// ─── Purchase ingestion (tickets BOUGHT by the reseller) ─────────────────────
 
 enum PurchaseStatus {
   CONFIRMED
@@ -139,6 +137,13 @@ enum PurchaseStatus {
 enum PurchaseSource {
   MANUAL
   EMAIL
+  EXCEL
+}
+
+enum ParseStatus {
+  OK
+  PARTIAL  // parsed but some fields are missing/uncertain
+  FAILED   // parsing failed; purchase saved with minimal data
 }
 
 enum FetchStatus {
@@ -153,9 +158,9 @@ model EmailAccount {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  label       String   // friendly name, e.g. "Main iCloud"
+  label       String
   email       String   @unique
-  password    String   // AES-256-GCM encrypted — never stored in plain text
+  password    String   // AES-256-GCM encrypted
   imapHost    String
   imapPort    Int      @default(993)
   tls         Boolean  @default(true)
@@ -166,54 +171,99 @@ model EmailAccount {
   fetchLogs EmailFetchLog[]
 }
 
-// Log of every IMAP fetch run
+// Log of every IMAP fetch run per account
 model EmailFetchLog {
-  id             String      @id @default(cuid())
-  startedAt      DateTime    @default(now())
-  completedAt    DateTime?
-  status         FetchStatus @default(RUNNING)
-  emailAccountId String
-  emailAccount   EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
-  emailsScanned  Int         @default(0)
-  purchasesAdded Int         @default(0)
-  error          String?
+  id              String       @id @default(cuid())
+  startedAt       DateTime     @default(now())
+  completedAt     DateTime?
+  status          FetchStatus  @default(RUNNING)
+  emailAccountId  String
+  emailAccount    EmailAccount @relation(fields: [emailAccountId], references: [id], onDelete: Cascade)
+  emailsScanned   Int          @default(0)
+  purchasesAdded  Int          @default(0)
+  error           String?
 }
 
-// One record per ticket purchase extracted from a confirmation email (or added manually)
+// Tracks every Excel purchase-history import run
+model ExcelImportRun {
+  id             String    @id @default(cuid())
+  createdAt      DateTime  @default(now())
+  filename       String
+  sheetName      String    @default("Ticket Data")
+  status         FetchStatus @default(RUNNING)
+  totalRows      Int       @default(0)
+  importedRows   Int       @default(0)
+  skippedRows    Int       @default(0)
+  failedRows     Int       @default(0)
+  // JSON arrays for per-row details
+  skippedDetails String?   // [{rowIndex, reason, fingerprint?}]
+  failedDetails  String?   // [{rowIndex, error}]
+  error          String?   // top-level failure message
+
+  purchases      Purchase[]
+}
+
+// One record per ticket purchase (from email, Excel, or manual entry)
 model Purchase {
   id          String         @id @default(cuid())
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  // Event details
+  // ── Source ──────────────────────────────────────────────────────────────────
+  source      PurchaseSource @default(MANUAL)
+  provider    String?        // "ticketmaster"
+
+  // ── Event ───────────────────────────────────────────────────────────────────
   eventName   String
   eventDate   DateTime?
   venue       String?
 
-  // Ticket details
+  // ── Purchase info ────────────────────────────────────────────────────────────
+  purchaseDate  DateTime?    // when the ticket was bought
+  account       String?      // email/account used to make the purchase
+  ticketType    String?      // e.g. "Standard", "VIP", "Standing"
+
+  // ── Seats ───────────────────────────────────────────────────────────────────
+  quantity    Int            @default(1)
   section     String?
   row         String?
-  seats       String?
-  quantity    Int            @default(1)
+  seat        String?        // single seat or legacy combined string
+  seatFrom    String?        // explicit range start
+  seatTo      String?        // explicit range end
 
-  // Order details
+  // ── Financials ───────────────────────────────────────────────────────────────
+  pricePaid     Float        @default(0)
+  costPerTicket Float?
+  currency      String       @default("GBP")
+
+  // ── Status & dedup ──────────────────────────────────────────────────────────
+  status        PurchaseStatus @default(CONFIRMED)
+  parseStatus   ParseStatus    @default(OK)
+  parseError    String?
+  fingerprint   String?        @unique  // SHA-256 of normalised key fields
+
+  // ── Order reference ──────────────────────────────────────────────────────────
   orderNumber String?
-  platform    String         // e.g. "ticketmaster.co.uk"
-  account     String         // email address used for the purchase
-  pricePaid   Float          @default(0)
-  currency    String         @default("GBP")
+  platform    String?      // e.g. "ticketmaster.co.uk"
 
-  status      PurchaseStatus @default(CONFIRMED)
-  source      PurchaseSource @default(MANUAL)
+  // ── Email source metadata ────────────────────────────────────────────────────
+  rawEmailId      String?   @unique  // "<account>:<imap-uid>"
+  emailMessageId  String?
+  emailSubject    String?
+  emailSender     String?
+  emailReceivedAt DateTime?
 
-  // Deduplication key: "<email-account-email>:<imap-uid>"
-  rawEmailId  String?        @unique
+  // ── Relations ─────────────────────────────────────────────────────────────────
+  emailAccountId  String?
+  emailAccount    EmailAccount?   @relation(fields: [emailAccountId], references: [id], onDelete: SetNull)
+  importRunId     String?
+  importRun       ExcelImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
 
-  emailAccountId String?
-  emailAccount   EmailAccount? @relation(fields: [emailAccountId], references: [id], onDelete: SetNull)
-
-  @@index([platform])
-  @@index([account])
-  @@index([status])
   @@index([eventDate])
+  @@index([source])
+  @@index([status])
+  @@index([platform])
+  @@index([parseStatus])
+  @@index([importRunId])
+  @@index([emailAccountId])
 }
